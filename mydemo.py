@@ -106,20 +106,6 @@ async def run():
     print("=== Credential Schemas Setup ==")
 
 
-    print("Government -> Create Job-Certificate Schema")
-    job_certificate = {
-        'name': 'Job-Certificate',
-        'version': '0.2',
-        'attributes': ['first_name', 'last_name', 'salary', 'employee_status', 'experience']
-    }
-    (government['job_certificate_schema_id'], government['job_certificate_schema']) = \
-        await anoncreds.issuer_create_schema(government['did'], job_certificate['name'], job_certificate['version'],
-                                             json.dumps(job_certificate['attributes']))
-    job_certificate_schema_id = government['job_certificate_schema_id']
-
-    print("Government -> Send Job-Certificate Schema to Ledger")
-    await send_schema(government['pool'], government['wallet'], government['did'], government['job_certificate_schema'])
-
     print("Government -> Create Transcript Schema")
     transcript = {
         'name': 'Transcript',
@@ -159,29 +145,6 @@ async def run():
     print("Faber -> Send  Faber Transcript Credential Definition to Ledger")
     await send_cred_def(faber['pool'], faber['wallet'], faber['did'], faber['transcript_cred_def'])
 
-    print("\n=====================================================================")
-    print("=== Acme Credential Definition Setup ==")
-
-
-    print("Acme -> Get from Ledger Job-Certificate Schema")
-    (acme['job_certificate_schema_id'], acme['job_certificate_schema']) = \
-        await get_schema(acme['pool'], acme['did'], job_certificate_schema_id)
-
-    print("Acme -> Create and store in Wallet Acme Job-Certificate Credential Definition")
-    job_certificate_cred_def = {
-        'tag': 'TAG1',
-        'type': 'CL',
-        'config': {"support_revocation": False}
-    }
-    (acme['job_certificate_cred_def_id'], acme['job_certificate_cred_def']) = \
-        await anoncreds.issuer_create_and_store_credential_def(acme['wallet'], acme['did'],
-                                                               acme['job_certificate_schema'],
-                                                               job_certificate_cred_def['tag'],
-                                                               job_certificate_cred_def['type'],
-                                                               json.dumps(job_certificate_cred_def['config']))
-
-    print("Acme -> Send Acme Job-Certificate Credential Definition to Ledger")
-    await send_cred_def(acme['pool'], acme['wallet'], acme['did'], acme['job_certificate_cred_def'])
 
 # ---------------------------------- EXCHANGING CREDENTIALS ---------------------------------- #
 
