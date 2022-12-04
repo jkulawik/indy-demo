@@ -25,7 +25,7 @@ async def run():
     pool_['handle'] = await pool.open_pool_ledger(pool_['name'], None)
 
     print("\n=====================================================================")
-    print("=== Getting Endorser credentials for Faber, Acme, Thrift and Government")
+    print("=== Getting Endorser credentials for Faber, Acme and Government")
 
 
     steward = {
@@ -84,19 +84,6 @@ async def run():
 
     await getting_verinym(steward, acme)
 
-    print("\n=====================================================================")
-    print("== Getting Endorser credentials - Thrift getting Verinym")
-
-
-    thrift = {
-        'name': 'Thrift',
-        'wallet_config': json.dumps({'id': 'thrift_wallet'}),
-        'wallet_credentials': json.dumps({'key': 'thrift_wallet_key'}),
-        'pool': pool_['handle'],
-        'role': 'ENDORSER'
-    }
-
-    await getting_verinym(steward, thrift)
 
     print("\n=====================================================================")
     print("=== Credential Schemas Setup ==")
@@ -396,10 +383,6 @@ async def run():
     print("Acme -> Close and Delete wallet")
     await wallet.close_wallet(acme['wallet'])
     await wallet.delete_wallet(acme['wallet_config'], acme['wallet_credentials'])
-
-    print("Thrift -> Close and Delete wallet")
-    await wallet.close_wallet(thrift['wallet'])
-    await wallet.delete_wallet(thrift['wallet_config'], thrift['wallet_credentials'])
 
     print("Alice -> Close and Delete wallet")
     await wallet.close_wallet(alice['wallet'])
