@@ -7,6 +7,8 @@ from indy.error import ErrorCode
 
 async def run():
     print("Getting started -> started")
+    print("\n=====================================================================")
+    print("=== Getting pool connection")
 
     # Set protocol version 2 to work with Indy Node 1.4
     await pool.set_protocol_version(2)
@@ -83,6 +85,21 @@ async def run():
     }
 
     await getting_verinym(steward, acme)
+
+    print("\n=====================================================================")
+    print("== Alice setup ==")
+
+    alice = {
+        'name': 'Alice',
+        'wallet_config': json.dumps({'id': 'alice_wallet'}),
+        'wallet_credentials': json.dumps({'key': 'alice_wallet_key'}),
+        'pool': pool_['handle'],
+    }
+    await create_wallet(alice)
+    (alice['did'], alice['key']) = await did.create_and_store_my_did(alice['wallet'], "{}")
+
+
+# ---------------------------------- SCHEMA AND CRED DEF SET-UP ---------------------------------- #
 
 
     print("\n=====================================================================")
@@ -166,20 +183,7 @@ async def run():
     print("Acme -> Send Acme Job-Certificate Credential Definition to Ledger")
     await send_cred_def(acme['pool'], acme['wallet'], acme['did'], acme['job_certificate_cred_def'])
 
-    print("\n=====================================================================")
-    print("=== Getting Transcript with Faber ==")
-    print("\n=====================================================================")
-    print("== Alice setup ==")
-    print("\n=====================================================================")
-
-    alice = {
-        'name': 'Alice',
-        'wallet_config': json.dumps({'id': 'alice_wallet'}),
-        'wallet_credentials': json.dumps({'key': 'alice_wallet_key'}),
-        'pool': pool_['handle'],
-    }
-    await create_wallet(alice)
-    (alice['did'], alice['key']) = await did.create_and_store_my_did(alice['wallet'], "{}")
+# ---------------------------------- EXCHANGING CREDENTIALS ---------------------------------- #
 
     print("\n=====================================================================")
     print("== Getting Transcript with Faber - Getting Transcript Credential ==")
