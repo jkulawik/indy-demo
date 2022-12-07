@@ -2,7 +2,7 @@ import asyncio
 import time
 import json
 
-from indy import anoncreds, did, ledger, pool, wallet, IndyError
+from indy import anoncreds, did, ledger, pool, wallet, IndyError, blob_storage
 from indy.error import ErrorCode
 
 async def run():
@@ -134,7 +134,7 @@ async def run():
     transcript_cred_def = {
         'tag': 'TAG1',
         'type': 'CL',
-        'config': {"support_revocation": False}
+        'config': {"support_revocation": True}
     }
     (faber['transcript_cred_def_id'], faber['transcript_cred_def']) = \
         await anoncreds.issuer_create_and_store_credential_def(faber['wallet'], faber['did'],
@@ -145,6 +145,37 @@ async def run():
     print("Faber -> Send  Faber Transcript Credential Definition to Ledger")
     await send_cred_def(faber['pool'], faber['wallet'], faber['did'], faber['transcript_cred_def'])
 
+
+    print("\n=====================================================================")
+    print("=== Faber Revocation Registry Setup ==")
+
+    # TODO convert this into a function that takes the below variables and returns all the necessary revoc variables
+    # Convert existing data to variables from test
+    issuer_wallet_handle = faber['wallet']
+    issuer_did = faber["did"]
+    cred_def_id = faber['transcript_cred_def_id']
+    pool_handle = pool_['handle']
+
+    #  Issuer Creates Revocation Registry
+    print("Faber -> Create revocation registry")    
+    tails_writer_config = json.dumps({'base_dir': '/home/indy/sandbox/tails', 'uri_pattern': ''})
+    tails_writer = await blob_storage.open_writer('default', tails_writer_config)
+    
+    (rev_reg_def_id, rev_reg_def_json, rev_reg_entry_json) = \
+        await anoncreds.issuer_create_and_store_revoc_reg(issuer_wallet_handle, issuer_did, None, 'tag1', cred_def_id,
+                                                          '{"max_cred_num": 5, "issuance_type":"ISSUANCE_ON_DEMAND"}',
+                                                          tails_writer)
+
+    # Issuer posts Revocation Registry Definition to Ledger
+    print("Faber -> Send Revocation Registry Definition to Ledger")
+    revoc_reg_request = await ledger.build_revoc_reg_def_request(issuer_did, rev_reg_def_json)
+    await ledger.sign_and_submit_request(pool_handle, issuer_wallet_handle, issuer_did, revoc_reg_request)
+
+    # Issuer posts Revocation Registry Entry to Ledger
+    print("Faber -> send Revocation Registry Entry to Ledger")
+    revoc_reg_entry_request = \
+        await ledger.build_revoc_reg_entry_request(issuer_did, rev_reg_def_id, "CL_ACCUM", rev_reg_entry_json)
+    await ledger.sign_and_submit_request(pool_handle, issuer_wallet_handle, issuer_did, revoc_reg_entry_request)
 
 # ---------------------------------- EXCHANGING CREDENTIALS ---------------------------------- #
 
@@ -205,7 +236,7 @@ async def run():
                                                          alice['transcript_cred_def_id'])
 
     await anoncreds.prover_store_credential(alice['wallet'], None, alice['transcript_cred_request_metadata'],
-                                            alice['transcript_cred'], alice['transcript_cred_def'], None)
+                                            alice['transcript_cred'], alice['transcript_cred_def'], None)  # TODO tutaj będzie revoc_reg_def_json
 
     print("\n=====================================================================")
     print("== Apply for the job with Acme - Transcript proving ==")
