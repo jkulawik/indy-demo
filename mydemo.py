@@ -4,7 +4,6 @@ import json
 
 from indy import anoncreds, did, ledger, pool, wallet, IndyError, blob_storage
 from indy.error import ErrorCode
-# from tests.ledger.test_submit_request import ensure_previous_request_applied
 
 
 async def run():
@@ -96,8 +95,7 @@ async def run():
     await create_wallet(alice)
     (alice['did'], alice['key']) = await did.create_and_store_my_did(alice['wallet'], "{}")
 
-
-# ---------------------------------- SCHEMA AND CRED DEF SET-UP ---------------------------------- #
+    # ---------------------------------- SCHEMA AND CRED DEF SET-UP ---------------------------------- #
 
     print("\n=====================================================================")
     print("=== Credential Schemas Setup ==")
@@ -151,10 +149,10 @@ async def run():
     pool_handle = pool_['handle']
 
     #  Issuer Creates Revocation Registry
-    print("Faber -> Create revocation registry")    
+    print("Faber -> Create revocation registry")
     tails_writer_config = json.dumps({'base_dir': '/home/indy/sandbox/tails', 'uri_pattern': ''})
     tails_writer = await blob_storage.open_writer('default', tails_writer_config)
-    
+
     (rev_reg_def_id, rev_reg_def_json, rev_reg_entry_json) = \
         await anoncreds.issuer_create_and_store_revoc_reg(issuer_wallet_handle, issuer_did, None, 'tag1', cred_def_id,
                                                           '{"max_cred_num": 5, "issuance_type":"ISSUANCE_ON_DEMAND"}',
@@ -171,7 +169,7 @@ async def run():
         await ledger.build_revoc_reg_entry_request(issuer_did, rev_reg_def_id, "CL_ACCUM", rev_reg_entry_json)
     await ledger.sign_and_submit_request(pool_handle, issuer_wallet_handle, issuer_did, revoc_reg_entry_request)
 
-# ---------------------------------- EXCHANGING CREDENTIALS ---------------------------------- #
+    # ---------------------------------- EXCHANGING CREDENTIALS ---------------------------------- #
 
     print("\n=====================================================================")
     print("== Getting Transcript with Faber - Getting Transcript Credential ==")
@@ -222,21 +220,24 @@ async def run():
 
     # Issuer creates credential
     print("Faber -> Create Transcript Credential for Alice")
-    
-    blob_storage_reader_cfg_handle = await blob_storage.open_reader('default', tails_writer_config)  # Issuer opens tails file reader
+
+    blob_storage_reader_cfg_handle = \
+        await blob_storage.open_reader('default', tails_writer_config)  # Issuer opens tails file reader
 
     (faber['transcript_cred'], cred_rev_id, rev_reg_delta_json) = \
         await anoncreds.issuer_create_credential(faber['wallet'], faber['transcript_cred_offer'],
                                                  faber['transcript_cred_request'],
                                                  faber['alice_transcript_cred_values'],
-                                                 rev_reg_def_id, blob_storage_reader_cfg_handle)  # Revocation registry data is passed to issue credential
+                                                 rev_reg_def_id,
+                                                 blob_storage_reader_cfg_handle)
+    # Note that in the above, revocation registry data is passed to issue the credential
 
     # Issuer Posts Revocation Registry Delta to Ledger
     print("Faber -> Send revocation registry delta to Ledger")
     revoc_reg_entry_request = \
         await ledger.build_revoc_reg_entry_request(issuer_did, rev_reg_def_id, "CL_ACCUM", rev_reg_delta_json)
     await ledger.sign_and_submit_request(pool_handle, issuer_wallet_handle, issuer_did, revoc_reg_entry_request)
-    
+
     # Issuer sends credential to Prover
     print("Faber -> Send Transcript Credential to Alice")
     alice['transcript_cred'] = faber['transcript_cred']
@@ -255,12 +256,12 @@ async def run():
     _, alice['transcript_cred_def'] = await get_cred_def(alice['pool'], alice['did'],
                                                          alice['transcript_cred_def_id'])
 
-    await anoncreds.prover_store_credential(alice['wallet'], None,   # TODO none = cred_id, can be any string I think
+    await anoncreds.prover_store_credential(alice['wallet'], None,  # TODO none = cred_id, can be any string I think
                                             alice['transcript_cred_request_metadata'],
                                             alice['transcript_cred'], alice['transcript_cred_def'], revoc_reg_def_json)
 
-# FIXME continue from here
-# ---------------------------------- USING THE CREDENTIALS ---------------------------------- #
+    # FIXME continue from here
+    # ---------------------------------- USING THE CREDENTIALS ---------------------------------- #
 
     print("\n=====================================================================")
     print("== Apply for the job with Acme - Transcript proving ==")
@@ -359,7 +360,7 @@ async def run():
     job_application_proof_object = json.loads(acme['job_application_proof'])
 
     acme['schemas_for_job_application'], acme['cred_defs_for_job_application'], \
-    acme['revoc_ref_defs_for_job_application'], acme['revoc_regs_for_job_application'] = \
+        acme['revoc_ref_defs_for_job_application'], acme['revoc_regs_for_job_application'] = \
         await verifier_get_entities_from_ledger(acme['pool'], acme['did'],
                                                 job_application_proof_object['identifiers'], acme['name'])
 
@@ -381,8 +382,7 @@ async def run():
                                                  acme['revoc_ref_defs_for_job_application'],
                                                  acme['revoc_regs_for_job_application'])
 
-
-# ---------------------------------- CLEAN UP ---------------------------------- #
+    # ---------------------------------- CLEAN UP ---------------------------------- #
 
     print("\n=====================================================================")
 
@@ -513,4 +513,3 @@ async def verifier_get_entities_from_ledger(pool_handle, _did, identifiers, acto
 
 
 await run()
-
