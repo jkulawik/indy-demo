@@ -91,6 +91,7 @@ async def run():
         'wallet_config': json.dumps({'id': 'alice_wallet'}),
         'wallet_credentials': json.dumps({'key': 'alice_wallet_key'}),
         'pool': pool_['handle'],
+        'last_revoc_update': None
     }
     await create_wallet(alice)
     (alice['did'], alice['key']) = await did.create_and_store_my_did(alice['wallet'], "{}")
@@ -221,7 +222,7 @@ async def run():
     # Issuer creates credential
     print("Faber -> Create Transcript Credential for Alice")
 
-    blob_storage_reader_cfg_handle = \
+    tails_reader = \
         await blob_storage.open_reader('default', tails_writer_config)  # Issuer opens tails file reader
 
     (faber['transcript_cred'], cred_rev_id, rev_reg_delta_json) = \
@@ -229,7 +230,7 @@ async def run():
                                                  faber['transcript_cred_request'],
                                                  faber['alice_transcript_cred_values'],
                                                  rev_reg_id,
-                                                 blob_storage_reader_cfg_handle)
+                                                 tails_reader)
     # Note that in the above, revocation registry data is passed to issue the credential
 
     # Issuer Posts Revocation Registry Delta to Ledger
@@ -322,15 +323,6 @@ async def run():
 
     await anoncreds.prover_close_credentials_search_for_proof_req(search_handle)
 
-    # TODO Prover Gets RevocationRegistryDelta from Ledger -> put in prover_get_entities_from_ledger?
-    # required to get delta: prover_did, rev_reg_id, time ("to")
-    # returns: rev_reg_id, revoc_reg_delta_json, timestamp
-
-    # required to get revoc state: blob_storage_reader_cfg_handle, revoc_reg_def_json, revoc_reg_delta_json, timestamp, credential['cred_rev_id']
-    # from get delta: revoc_reg_delta_json, timestamp
-    # missing: blob_storage_reader_cfg_handle, revoc_reg_def_json (this can be acquired with a func)
-    # returns: rev_state_json - which is needed for anoncreds.prover_create_proof()
-
     alice['creds_for_job_application_proof'] = {cred_for_attr1['referent']: cred_for_attr1,
                                                 cred_for_attr2['referent']: cred_for_attr2,
                                                 cred_for_attr3['referent']: cred_for_attr3,
@@ -340,12 +332,18 @@ async def run():
     # NOTE: the search returns the same cred (referent) each time, so this dict has one entry that's
     # being readded and is assumedly automatically skipped
 
-    print("[!] Alice's creds_for_job_application_proof")
-    print(alice['creds_for_job_application_proof'])
+    # Prover Gets RevocationRegistryDelta from Ledger
+    # Prover Creates Revocation State
+    # (both are done in prover_get_entities_from_ledger)
 
+    request_time = get_current_time()
     alice['schemas'], alice['cred_defs'], alice['revoc_states'] = \
         await prover_get_entities_from_ledger(alice['pool'], alice['did'],
-                                              alice['creds_for_job_application_proof'], alice['name'])  # FIXME prover_get_entities_from_ledger should return revoc states
+                                              alice['creds_for_job_application_proof'], alice['name'],
+                                              _from_time=alice['last_revoc_update'],
+                                              _to_time=request_time,
+                                              _tails_reader=tails_reader)
+    alice['last_revoc_update'] = request_time
 
     print("Alice -> Create Job-Application Proof")
     alice['job_application_requested_creds'] = json.dumps({
@@ -362,12 +360,13 @@ async def run():
         'requested_predicates': {'predicate1_referent': {'cred_id': cred_for_predicate1['referent']}}
     })
 
+    # FIXME ta linijka się wykrzacza (CommonInvalidStructure) kiedy prover_get_entities_from_ledger zwraca revoc_states
     alice['job_application_proof'] = \
         await anoncreds.prover_create_proof(alice['wallet'], alice['job_application_proof_request'],
                                             alice['job_application_requested_creds'], alice['master_secret_id'],
                                             alice['schemas'], alice['cred_defs'], alice['revoc_states'])
 
-# TODO dotąd jest ok
+# TODO zmiany są wprowadzone do tego miejsca
 
     print("Alice -> Send Job-Application Proof to Acme")
     acme['job_application_proof'] = alice['job_application_proof']
@@ -464,7 +463,15 @@ async def get_revoc_reg_def(pool_handle, _did, rev_reg_id):
     # Returns (rev_reg_id, revoc_reg_def_json)
 
 
-# --------- Other
+async def get_revoc_reg_delta(pool_handle, _did, _rev_reg_id, _from_time, _to_time):
+    get_revoc_reg_delta_request = await ledger.build_get_revoc_reg_delta_request(_did, _rev_reg_id,
+                                                                                 _from_time, _to_time)
+    get_revoc_reg_delta_response = await ledger.submit_request(pool_handle, get_revoc_reg_delta_request)
+    return await ledger.parse_get_revoc_reg_delta_response(get_revoc_reg_delta_response)
+    # Return (rev_reg_id, revoc_reg_delta_json, timestamp)
+
+
+# --------- Misc
 async def create_wallet(identity):
     print("{} -> Create wallet".format(identity['name']))
     try:
@@ -496,7 +503,14 @@ async def get_credential_for_referent(_search_handle, referent):
     return credentials[0]['cred_info']
 
 
-async def prover_get_entities_from_ledger(pool_handle, _did, identifiers, actor):
+def get_current_time() -> int:
+    return int(time.time())
+
+
+# ---------  Mass get data from ledger
+
+async def prover_get_entities_from_ledger(pool_handle, _did, identifiers, actor,
+                                          _from_time=None, _to_time=None, _tails_reader=None):
     schemas = {}
     cred_defs = {}
     rev_states = {}
@@ -511,9 +525,22 @@ async def prover_get_entities_from_ledger(pool_handle, _did, identifiers, actor)
         (received_cred_def_id, received_cred_def) = await get_cred_def(pool_handle, _did, item['cred_def_id'])
         cred_defs[received_cred_def_id] = json.loads(received_cred_def)
 
-        print("Is there rev_reg_seq_no in item?", 'rev_reg_seq_no' in item)
-        if 'rev_reg_seq_no' in item:
-            pass  # TODO Create Revocation States
+        if item['rev_reg_id'] is not None:
+            print("{} -> Get Revoc delta from Ledger".format(actor))
+            rev_reg_id = item['rev_reg_id']
+            (rev_reg_id, revoc_reg_delta_json, timestamp) = \
+                await get_revoc_reg_delta(pool_handle, _did, rev_reg_id, _from_time, _to_time)
+            print("{} -> Create revocation definition".format(actor))
+            (rev_reg_id, revoc_reg_def_json) = await get_revoc_reg_def(pool_handle, _did, rev_reg_id)
+            print("{} -> Create revocation state".format(actor))
+            rev_state_json = await anoncreds.create_revocation_state(_tails_reader, revoc_reg_def_json,
+                                                                     revoc_reg_delta_json, timestamp,
+                                                                     item['cred_rev_id'])
+            try:
+                rev_states[rev_reg_id] = json.loads(rev_state_json)
+            except IndyError as ex:
+                print(ex)
+            # rev_states[rev_reg_id] = json.loads(rev_state_json)  # FIXME this causes the function to crap out
 
     return json.dumps(schemas), json.dumps(cred_defs), json.dumps(rev_states)
 
@@ -532,8 +559,7 @@ async def verifier_get_entities_from_ledger(pool_handle, _did, identifiers, acto
         (received_cred_def_id, received_cred_def) = await get_cred_def(pool_handle, _did, item['cred_def_id'])
         cred_defs[received_cred_def_id] = json.loads(received_cred_def)
 
-        print("Is there rev_reg_seq_no in item?", 'rev_reg_seq_no' in item)
-        if 'rev_reg_seq_no' in item:
+        if item['rev_reg_id'] is not None:
             pass  # TODO Get Revocation Definitions and Revocation Registries
 
     return json.dumps(schemas), json.dumps(cred_defs), json.dumps(rev_reg_defs), json.dumps(rev_regs)

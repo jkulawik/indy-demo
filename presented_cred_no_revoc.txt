@@ -1,0 +1,16 @@
+{
+  "referent": "654e4a2e-331b-4ea6-9caa-1a1964ebe7ef",
+  "attrs": {
+    "year": "2015",
+    "status": "graduated",
+    "average": "5",
+    "degree": "Bachelor of Science, Marketing",
+    "first_name": "Alice",
+    "last_name": "Garcia",
+    "ssn": "123-45-6789"
+  },
+  "schema_id": "U9pM6rv7Z38bpBNsDy4miW:2:Transcript:1.2",
+  "cred_def_id": "WNXYNFHLkJqPgVJGH3XrBp:3:CL:238:TAG1",
+  "rev_reg_id": None,
+  "cred_rev_id": None
+}
