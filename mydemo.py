@@ -170,6 +170,7 @@ async def run():
         await ledger.build_revoc_reg_entry_request(issuer_did, rev_reg_id, "CL_ACCUM", rev_reg_entry_json)
     await ledger.sign_and_submit_request(pool_handle, issuer_wallet_handle, issuer_did, revoc_reg_entry_request)
 
+    time.sleep(1)  # sleep 1 second before using the freshly created revocable creds
     # ---------------------------------- EXCHANGING CREDENTIALS ---------------------------------- #
 
     print("\n=====================================================================")
@@ -345,6 +346,9 @@ async def run():
                                               _tails_reader=tails_reader)
     alice['last_revoc_update'] = request_time
 
+    print("[i] Ledger entities")
+    print(alice['schemas'], '\n', alice['revoc_states'])
+
     print("Alice -> Create Job-Application Proof")
     alice['job_application_requested_creds'] = json.dumps({
         'self_attested_attributes': {
@@ -360,7 +364,6 @@ async def run():
         'requested_predicates': {'predicate1_referent': {'cred_id': cred_for_predicate1['referent']}}
     })
 
-    # FIXME ta linijka się wykrzacza (CommonInvalidStructure) kiedy prover_get_entities_from_ledger zwraca revoc_states
     alice['job_application_proof'] = \
         await anoncreds.prover_create_proof(alice['wallet'], alice['job_application_proof_request'],
                                             alice['job_application_requested_creds'], alice['master_secret_id'],
@@ -530,17 +533,13 @@ async def prover_get_entities_from_ledger(pool_handle, _did, identifiers, actor,
             rev_reg_id = item['rev_reg_id']
             (rev_reg_id, revoc_reg_delta_json, timestamp) = \
                 await get_revoc_reg_delta(pool_handle, _did, rev_reg_id, _from_time, _to_time)
-            print("{} -> Create revocation definition".format(actor))
+            print("{} -> Get revocation definition".format(actor))
             (rev_reg_id, revoc_reg_def_json) = await get_revoc_reg_def(pool_handle, _did, rev_reg_id)
             print("{} -> Create revocation state".format(actor))
             rev_state_json = await anoncreds.create_revocation_state(_tails_reader, revoc_reg_def_json,
                                                                      revoc_reg_delta_json, timestamp,
                                                                      item['cred_rev_id'])
-            try:
-                rev_states[rev_reg_id] = json.loads(rev_state_json)
-            except IndyError as ex:
-                print(ex)
-            # rev_states[rev_reg_id] = json.loads(rev_state_json)  # FIXME this causes the function to crap out
+            rev_states[rev_reg_id] = {timestamp: json.loads(rev_state_json)}
 
     return json.dumps(schemas), json.dumps(cred_defs), json.dumps(rev_states)
 
@@ -559,8 +558,10 @@ async def verifier_get_entities_from_ledger(pool_handle, _did, identifiers, acto
         (received_cred_def_id, received_cred_def) = await get_cred_def(pool_handle, _did, item['cred_def_id'])
         cred_defs[received_cred_def_id] = json.loads(received_cred_def)
 
-        if item['rev_reg_id'] is not None:
-            pass  # TODO Get Revocation Definitions and Revocation Registries
+        if item['rev_reg_id'] is not None:  # TODO Get Revocation Definitions and Revocation Registries
+            print("{} -> Get revocation definition".format(actor))
+            rev_reg_id = item['rev_reg_id']
+            (rev_reg_id, revoc_reg_def_json) = await get_revoc_reg_def(pool_handle, _did, rev_reg_id)
 
     return json.dumps(schemas), json.dumps(cred_defs), json.dumps(rev_reg_defs), json.dumps(rev_regs)
 
