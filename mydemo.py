@@ -141,7 +141,6 @@ async def run():
     print("\n=====================================================================")
     print("=== Faber Revocation Registry Setup ==")
 
-    # TODO convert this into a function that takes the below variables and returns all the necessary revoc variables
     # Convert existing data to variables from test
     issuer_wallet_handle = faber['wallet']
     issuer_did = faber["did"]
@@ -247,20 +246,17 @@ async def run():
     prover_did = alice['did']
     credential = json.loads(alice['transcript_cred'])
 
-    get_revoc_reg_def_request = await ledger.build_get_revoc_reg_def_request(prover_did, credential['rev_reg_id'])
-    get_revoc_reg_def_response = await ledger.submit_request(pool_handle, get_revoc_reg_def_request)
-    (rev_reg_id, revoc_reg_def_json) = await ledger.parse_get_revoc_reg_def_response(get_revoc_reg_def_response)
+    (rev_reg_id, revoc_reg_def_json) = await get_revoc_reg_def(pool_handle, prover_did, credential['rev_reg_id'])
 
     # Prover stores credential and revocation data
     print("Alice -> Store the credential and revocation data")
     _, alice['transcript_cred_def'] = await get_cred_def(alice['pool'], alice['did'],
                                                          alice['transcript_cred_def_id'])
 
-    await anoncreds.prover_store_credential(alice['wallet'], None,  # TODO none = cred_id, can be any string I think
+    await anoncreds.prover_store_credential(alice['wallet'], None,  # none = cred_id, can be any string I think
                                             alice['transcript_cred_request_metadata'],
                                             alice['transcript_cred'], alice['transcript_cred_def'], revoc_reg_def_json)
 
-    # FIXME continue from here
     # ---------------------------------- USING THE CREDENTIALS ---------------------------------- #
 
     print("\n=====================================================================")
@@ -310,19 +306,29 @@ async def run():
 
     print("Alice -> Get credentials for Job-Application Proof Request")
 
-    search_for_job_application_proof_request = \
+    search_handle = \
         await anoncreds.prover_search_credentials_for_proof_req(alice['wallet'],
                                                                 alice['job_application_proof_request'], None)
 
-    cred_for_attr1 = await get_credential_for_referent(search_for_job_application_proof_request, 'attr1_referent')
-    cred_for_attr2 = await get_credential_for_referent(search_for_job_application_proof_request, 'attr2_referent')
-    cred_for_attr3 = await get_credential_for_referent(search_for_job_application_proof_request, 'attr3_referent')
-    cred_for_attr4 = await get_credential_for_referent(search_for_job_application_proof_request, 'attr4_referent')
-    cred_for_attr5 = await get_credential_for_referent(search_for_job_application_proof_request, 'attr5_referent')
+    # get_credential_for_referent = prover_fetch_credentials_for_proof_req
+    cred_for_attr1 = await get_credential_for_referent(search_handle, 'attr1_referent')
+    cred_for_attr2 = await get_credential_for_referent(search_handle, 'attr2_referent')
+    cred_for_attr3 = await get_credential_for_referent(search_handle, 'attr3_referent')
+    cred_for_attr4 = await get_credential_for_referent(search_handle, 'attr4_referent')
+    cred_for_attr5 = await get_credential_for_referent(search_handle, 'attr5_referent')
     cred_for_predicate1 = \
-        await get_credential_for_referent(search_for_job_application_proof_request, 'predicate1_referent')
+        await get_credential_for_referent(search_handle, 'predicate1_referent')
 
-    await anoncreds.prover_close_credentials_search_for_proof_req(search_for_job_application_proof_request)
+    await anoncreds.prover_close_credentials_search_for_proof_req(search_handle)
+
+    # TODO Prover Gets RevocationRegistryDelta from Ledger -> put in prover_get_entities_from_ledger?
+    # required to get delta: prover_did, rev_reg_def_id, time ("to")
+    # returns: rev_reg_id, revoc_reg_delta_json, timestamp
+
+    # required to get revoc state: blob_storage_reader_cfg_handle, revoc_reg_def_json, revoc_reg_delta_json, timestamp, credential['cred_rev_id']
+    # from get delta: revoc_reg_delta_json, timestamp
+    # missing: blob_storage_reader_cfg_handle, revoc_reg_def_json
+    # returns: rev_state_json - this is needed for anoncreds.prover_create_proof()
 
     alice['creds_for_job_application_proof'] = {cred_for_attr1['referent']: cred_for_attr1,
                                                 cred_for_attr2['referent']: cred_for_attr2,
@@ -333,7 +339,7 @@ async def run():
 
     alice['schemas'], alice['cred_defs'], alice['revoc_states'] = \
         await prover_get_entities_from_ledger(alice['pool'], alice['did'],
-                                              alice['creds_for_job_application_proof'], alice['name'])
+                                              alice['creds_for_job_application_proof'], alice['name'])  # FIXME prover_get_entities_from_ledger should return revoc states
 
     print("Alice -> Create Job-Application Proof")
     alice['job_application_requested_creds'] = json.dumps({
@@ -354,6 +360,8 @@ async def run():
         await anoncreds.prover_create_proof(alice['wallet'], alice['job_application_proof_request'],
                                             alice['job_application_requested_creds'], alice['master_secret_id'],
                                             alice['schemas'], alice['cred_defs'], alice['revoc_states'])
+
+# TODO dotąd jest ok
 
     print("Alice -> Send Job-Application Proof to Acme")
     acme['job_application_proof'] = alice['job_application_proof']
@@ -415,31 +423,7 @@ async def run():
 
 # ---------------------------------- HELPER FUNCTIONS ---------------------------------- #
 
-async def create_wallet(identity):
-    print("{} -> Create wallet".format(identity['name']))
-    try:
-        await wallet.create_wallet(identity['wallet_config'], identity['wallet_credentials'])
-    except IndyError as ex:
-        if ex.error_code == ErrorCode.PoolLedgerConfigAlreadyExistsError:
-            pass
-    identity['wallet'] = await wallet.open_wallet(identity['wallet_config'], identity['wallet_credentials'])
-
-
-async def getting_verinym(from_, to):
-    await create_wallet(to)
-
-    (to['did'], to['key']) = await did.create_and_store_my_did(to['wallet'], "{}")
-
-    from_['info'] = {
-        'did': to['did'],
-        'verkey': to['key'],
-        'role': to['role'] or None
-    }
-
-    await send_nym(from_['pool'], from_['wallet'], from_['did'], from_['info']['did'],
-                   from_['info']['verkey'], from_['info']['role'])
-
-
+# --------- Request shorthands
 async def send_nym(pool_handle, wallet_handle, _did, new_did, new_key, role):
     nym_request = await ledger.build_nym_request(_did, new_did, new_key, None, role)
     await ledger.sign_and_submit_request(pool_handle, wallet_handle, _did, nym_request)
@@ -467,9 +451,42 @@ async def get_cred_def(pool_handle, _did, cred_def_id):
     return await ledger.parse_get_cred_def_response(get_cred_def_response)
 
 
-async def get_credential_for_referent(search_handle, referent):
+async def get_revoc_reg_def(pool_handle, _did, rev_reg_id):
+    get_revoc_reg_def_request = await ledger.build_get_revoc_reg_def_request(_did, rev_reg_id)
+    get_revoc_reg_def_response = await ledger.submit_request(pool_handle, get_revoc_reg_def_request)
+    return await ledger.parse_get_revoc_reg_def_response(get_revoc_reg_def_response)
+    # Returns (rev_reg_id, revoc_reg_def_json)
+
+
+# --------- Other
+async def create_wallet(identity):
+    print("{} -> Create wallet".format(identity['name']))
+    try:
+        await wallet.create_wallet(identity['wallet_config'], identity['wallet_credentials'])
+    except IndyError as ex:
+        if ex.error_code == ErrorCode.PoolLedgerConfigAlreadyExistsError:
+            pass
+    identity['wallet'] = await wallet.open_wallet(identity['wallet_config'], identity['wallet_credentials'])
+
+
+async def getting_verinym(from_, to):
+    await create_wallet(to)
+
+    (to['did'], to['key']) = await did.create_and_store_my_did(to['wallet'], "{}")
+
+    from_['info'] = {
+        'did': to['did'],
+        'verkey': to['key'],
+        'role': to['role'] or None
+    }
+
+    await send_nym(from_['pool'], from_['wallet'], from_['did'], from_['info']['did'],
+                   from_['info']['verkey'], from_['info']['role'])
+
+
+async def get_credential_for_referent(_search_handle, referent):
     credentials = json.loads(
-        await anoncreds.prover_fetch_credentials_for_proof_req(search_handle, referent, 10))
+        await anoncreds.prover_fetch_credentials_for_proof_req(_search_handle, referent, 10))
     return credentials[0]['cred_info']
 
 
@@ -478,6 +495,8 @@ async def prover_get_entities_from_ledger(pool_handle, _did, identifiers, actor)
     cred_defs = {}
     rev_states = {}
     for item in identifiers.values():
+        print("[!] Credential content:")
+        print(item)
         print("{} -> Get Schema from Ledger".format(actor))
         (received_schema_id, received_schema) = await get_schema(pool_handle, _did, item['schema_id'])
         schemas[received_schema_id] = json.loads(received_schema)
@@ -486,6 +505,7 @@ async def prover_get_entities_from_ledger(pool_handle, _did, identifiers, actor)
         (received_cred_def_id, received_cred_def) = await get_cred_def(pool_handle, _did, item['cred_def_id'])
         cred_defs[received_cred_def_id] = json.loads(received_cred_def)
 
+        print("Is there rev_reg_seq_no in item?", 'rev_reg_seq_no' in item)
         if 'rev_reg_seq_no' in item:
             pass  # TODO Create Revocation States
 
@@ -506,6 +526,7 @@ async def verifier_get_entities_from_ledger(pool_handle, _did, identifiers, acto
         (received_cred_def_id, received_cred_def) = await get_cred_def(pool_handle, _did, item['cred_def_id'])
         cred_defs[received_cred_def_id] = json.loads(received_cred_def)
 
+        print("Is there rev_reg_seq_no in item?", 'rev_reg_seq_no' in item)
         if 'rev_reg_seq_no' in item:
             pass  # TODO Get Revocation Definitions and Revocation Registries
 
