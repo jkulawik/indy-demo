@@ -152,7 +152,8 @@ async def run():
     tails_writer_config = json.dumps({'base_dir': '/home/indy/sandbox/tails', 'uri_pattern': ''})
     tails_writer = await blob_storage.open_writer('default', tails_writer_config)
 
-    (rev_reg_def_id, rev_reg_def_json, rev_reg_entry_json) = \
+    # NOTE: rev_reg_id is sometimes referred to as rev_reg_def_id, but they're the same thing
+    (rev_reg_id, rev_reg_def_json, rev_reg_entry_json) = \
         await anoncreds.issuer_create_and_store_revoc_reg(issuer_wallet_handle, issuer_did, None, 'tag1', cred_def_id,
                                                           '{"max_cred_num": 5, "issuance_type":"ISSUANCE_ON_DEMAND"}',
                                                           tails_writer)
@@ -165,7 +166,7 @@ async def run():
     # Issuer posts Revocation Registry Entry to Ledger
     print("Faber -> send Revocation Registry Entry to Ledger")
     revoc_reg_entry_request = \
-        await ledger.build_revoc_reg_entry_request(issuer_did, rev_reg_def_id, "CL_ACCUM", rev_reg_entry_json)
+        await ledger.build_revoc_reg_entry_request(issuer_did, rev_reg_id, "CL_ACCUM", rev_reg_entry_json)
     await ledger.sign_and_submit_request(pool_handle, issuer_wallet_handle, issuer_did, revoc_reg_entry_request)
 
     # ---------------------------------- EXCHANGING CREDENTIALS ---------------------------------- #
@@ -227,14 +228,14 @@ async def run():
         await anoncreds.issuer_create_credential(faber['wallet'], faber['transcript_cred_offer'],
                                                  faber['transcript_cred_request'],
                                                  faber['alice_transcript_cred_values'],
-                                                 rev_reg_def_id,
+                                                 rev_reg_id,
                                                  blob_storage_reader_cfg_handle)
     # Note that in the above, revocation registry data is passed to issue the credential
 
     # Issuer Posts Revocation Registry Delta to Ledger
     print("Faber -> Send revocation registry delta to Ledger")
     revoc_reg_entry_request = \
-        await ledger.build_revoc_reg_entry_request(issuer_did, rev_reg_def_id, "CL_ACCUM", rev_reg_delta_json)
+        await ledger.build_revoc_reg_entry_request(issuer_did, rev_reg_id, "CL_ACCUM", rev_reg_delta_json)
     await ledger.sign_and_submit_request(pool_handle, issuer_wallet_handle, issuer_did, revoc_reg_entry_request)
 
     # Issuer sends credential to Prover
@@ -322,13 +323,13 @@ async def run():
     await anoncreds.prover_close_credentials_search_for_proof_req(search_handle)
 
     # TODO Prover Gets RevocationRegistryDelta from Ledger -> put in prover_get_entities_from_ledger?
-    # required to get delta: prover_did, rev_reg_def_id, time ("to")
+    # required to get delta: prover_did, rev_reg_id, time ("to")
     # returns: rev_reg_id, revoc_reg_delta_json, timestamp
 
     # required to get revoc state: blob_storage_reader_cfg_handle, revoc_reg_def_json, revoc_reg_delta_json, timestamp, credential['cred_rev_id']
     # from get delta: revoc_reg_delta_json, timestamp
-    # missing: blob_storage_reader_cfg_handle, revoc_reg_def_json
-    # returns: rev_state_json - this is needed for anoncreds.prover_create_proof()
+    # missing: blob_storage_reader_cfg_handle, revoc_reg_def_json (this can be acquired with a func)
+    # returns: rev_state_json - which is needed for anoncreds.prover_create_proof()
 
     alice['creds_for_job_application_proof'] = {cred_for_attr1['referent']: cred_for_attr1,
                                                 cred_for_attr2['referent']: cred_for_attr2,
@@ -336,6 +337,11 @@ async def run():
                                                 cred_for_attr4['referent']: cred_for_attr4,
                                                 cred_for_attr5['referent']: cred_for_attr5,
                                                 cred_for_predicate1['referent']: cred_for_predicate1}
+    # NOTE: the search returns the same cred (referent) each time, so this dict has one entry that's
+    # being readded and is assumedly automatically skipped
+
+    print("[!] Alice's creds_for_job_application_proof")
+    print(alice['creds_for_job_application_proof'])
 
     alice['schemas'], alice['cred_defs'], alice['revoc_states'] = \
         await prover_get_entities_from_ledger(alice['pool'], alice['did'],
