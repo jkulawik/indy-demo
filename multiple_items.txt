@@ -1,0 +1,14 @@
+[
+  {
+    "schema_id": "27RSnUSpmwix1tUEaCYd1X:2:Transcript:1.2",
+    "cred_def_id": "UXN5o2UXW1p7GNdqwDmWqe:3:CL:380:TAG1",
+    "rev_reg_id": "UXN5o2UXW1p7GNdqwDmWqe:4:UXN5o2UXW1p7GNdqwDmWqe:3:CL:380:TAG1:CL_ACCUM:tag1",
+    "timestamp": "None"
+  },
+  {
+    "schema_id": "27RSnUSpmwix1tUEaCYd1X:2:Transcript:1.2",
+    "cred_def_id": "UXN5o2UXW1p7GNdqwDmWqe:3:CL:380:TAG1",
+    "rev_reg_id": "UXN5o2UXW1p7GNdqwDmWqe:4:UXN5o2UXW1p7GNdqwDmWqe:3:CL:380:TAG1:CL_ACCUM:tag1",
+    "timestamp": 1671309184
+  }
+]

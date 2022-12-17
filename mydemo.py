@@ -341,7 +341,7 @@ async def run():
     # (both are done in prover_get_entities_from_ledger)
 
     request_time = get_current_time()
-    alice['schemas'], alice['cred_defs'], alice['revoc_states'] = \
+    alice['schemas'], alice['cred_defs'], alice['revoc_states'], timestamps = \
         await prover_get_entities_from_ledger(alice['pool'], alice['did'],
                                               alice['creds_for_job_application_proof'], alice['name'],
                                               _from_time=alice['last_revoc_update'],
@@ -360,19 +360,17 @@ async def run():
             'attr6_referent': '123-45-6789'
         },
         'requested_attributes': {
-            'attr3_referent': {'cred_id': cred_for_attr3['referent'], 'revealed': True, 'timestamp': 0},  # FIXME needs correct timestamp
-            'attr4_referent': {'cred_id': cred_for_attr4['referent'], 'revealed': True},
-            'attr5_referent': {'cred_id': cred_for_attr5['referent'], 'revealed': True},
+            'attr3_referent': {'cred_id': cred_for_attr3['referent'], 'revealed': True, 'timestamp': timestamps[cred_for_attr3['referent']]},
+            'attr4_referent': {'cred_id': cred_for_attr4['referent'], 'revealed': True, 'timestamp': timestamps[cred_for_attr4['referent']]},
+            'attr5_referent': {'cred_id': cred_for_attr5['referent'], 'revealed': True, 'timestamp': timestamps[cred_for_attr5['referent']]},
         },
-        'requested_predicates': {'predicate1_referent': {'cred_id': cred_for_predicate1['referent']}}
+        'requested_predicates': {'predicate1_referent': {'cred_id': cred_for_predicate1['referent'], 'timestamp': timestamps[cred_for_attr4['referent']]}}
     })
 
     alice['job_application_proof'] = \
         await anoncreds.prover_create_proof(alice['wallet'], alice['job_application_proof_request'],
                                             alice['job_application_requested_creds'], alice['master_secret_id'],
                                             alice['schemas'], alice['cred_defs'], alice['revoc_states'])
-
-# TODO zmiany są wprowadzone do tego miejsca
 
     print("Alice -> Send Job-Application Proof to Acme")
     acme['job_application_proof'] = alice['job_application_proof']
@@ -381,10 +379,15 @@ async def run():
     print("[i] Identifiers received from Prover:")
     print(job_application_proof_object['identifiers'])
 
+    for identifier in job_application_proof_object['identifiers']:
+        assert identifier['timestamp'] is not None
+        # Put correct timestamp in the requested credential if this fails.
+        # otherwise get_revoc_reg() will fail while verifying
+
     acme['schemas_for_job_application'], acme['cred_defs_for_job_application'], \
         acme['revoc_reg_defs_for_job_application'], acme['revoc_regs_for_job_application'] = \
         await verifier_get_entities_from_ledger(acme['pool'], acme['did'],
-                                                job_application_proof_object['identifiers'], acme['name'])  # FIXME note that the timestamp in identifiers is None
+                                                job_application_proof_object['identifiers'], acme['name'])
 
     print("Acme -> Verify Job-Application Proof from Alice")
     # assert 'Bachelor of Science, Marketing' == \
@@ -397,6 +400,8 @@ async def run():
     # assert 'Alice' == job_application_proof_object['requested_proof']['self_attested_attrs']['attr1_referent']
     # assert 'Garcia' == job_application_proof_object['requested_proof']['self_attested_attrs']['attr2_referent']
     # assert '123-45-6789' == job_application_proof_object['requested_proof']['self_attested_attrs']['attr6_referent']
+
+    # FIXME verify proof has CommonInvalidStructure.
 
     assert await anoncreds.verifier_verify_proof(acme['job_application_proof_request'], acme['job_application_proof'],
                                                  acme['schemas_for_job_application'],
@@ -482,7 +487,7 @@ async def get_revoc_reg_delta(pool_handle, _did, _rev_reg_id, _from_time, _to_ti
 
 async def get_revoc_reg(pool_handle, _did, _rev_reg_id, _timestamp):
     get_revoc_reg_request = \
-        await ledger.build_get_revoc_reg_request(_did, _rev_reg_id, _timestamp)  # FIXME TypeError: an integer is required (got type NoneType)
+        await ledger.build_get_revoc_reg_request(_did, _rev_reg_id, _timestamp)
     get_revoc_reg_response = await ledger.submit_request(pool_handle, get_revoc_reg_request)
     return await ledger.parse_get_revoc_reg_response(get_revoc_reg_response)
     # Returns (rev_reg_id, rev_reg_json, identifier)
@@ -531,6 +536,8 @@ async def prover_get_entities_from_ledger(pool_handle, _did, identifiers, actor,
     schemas = {}
     cred_defs = {}
     rev_states = {}
+    timestamps = {}  # Timestamps need to be saved to be put in the request proof
+
     for item in identifiers.values():
         print("{} -> Get Schema from Ledger".format(actor))
         (received_schema_id, received_schema) = await get_schema(pool_handle, _did, item['schema_id'])
@@ -545,6 +552,9 @@ async def prover_get_entities_from_ledger(pool_handle, _did, identifiers, actor,
             rev_reg_id = item['rev_reg_id']
             (rev_reg_id, revoc_reg_delta_json, timestamp) = \
                 await get_revoc_reg_delta(pool_handle, _did, rev_reg_id, _from_time, _to_time)
+            referent = item['referent']
+            timestamps[referent] = timestamp
+            print("[i] Timestamp for", referent, "=", timestamp)
             print("{} -> Get revocation definition".format(actor))
             (rev_reg_id, revoc_reg_def_json) = await get_revoc_reg_def(pool_handle, _did, rev_reg_id)
             print("{} -> Create revocation state".format(actor))
@@ -553,7 +563,7 @@ async def prover_get_entities_from_ledger(pool_handle, _did, identifiers, actor,
                                                                      item['cred_rev_id'])
             rev_states[rev_reg_id] = {timestamp: json.loads(rev_state_json)}
 
-    return json.dumps(schemas), json.dumps(cred_defs), json.dumps(rev_states)
+    return json.dumps(schemas), json.dumps(cred_defs), json.dumps(rev_states), timestamps
 
 
 async def verifier_get_entities_from_ledger(pool_handle, _did, identifiers, actor):
