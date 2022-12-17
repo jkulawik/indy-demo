@@ -3,7 +3,7 @@ import time
 import json
 
 from indy import anoncreds, did, ledger, pool, wallet, IndyError, blob_storage
-from indy.error import ErrorCode
+from indy.error import ErrorCode, errorcode_to_exception
 
 
 async def run():
@@ -401,13 +401,26 @@ async def run():
     # assert 'Garcia' == job_application_proof_object['requested_proof']['self_attested_attrs']['attr2_referent']
     # assert '123-45-6789' == job_application_proof_object['requested_proof']['self_attested_attrs']['attr6_referent']
 
-    # FIXME verify proof has CommonInvalidStructure.
+    # for testing
+    # try:
+    #     assert await anoncreds.verifier_verify_proof(acme['job_application_proof_request'],
+    #                                                  acme['job_application_proof'],
+    #                                                  acme['schemas_for_job_application'],
+    #                                                  acme['cred_defs_for_job_application'],
+    #                                                  acme['revoc_reg_defs_for_job_application'],
+    #                                                  acme['revoc_regs_for_job_application'])
+    # except IndyError as ex:
+    #     print("[!] Exception occured")
+    #     err = errorcode_to_exception(ex.error_code)
+    #     print(err)
 
     assert await anoncreds.verifier_verify_proof(acme['job_application_proof_request'], acme['job_application_proof'],
                                                  acme['schemas_for_job_application'],
                                                  acme['cred_defs_for_job_application'],
                                                  acme['revoc_reg_defs_for_job_application'],
                                                  acme['revoc_regs_for_job_application'])
+
+    # TODO revoke and try verifying
 
     # ---------------------------------- CLEAN UP ---------------------------------- #
 
@@ -584,7 +597,7 @@ async def verifier_get_entities_from_ledger(pool_handle, _did, identifiers, acto
             print("{} -> Get revocation definition".format(actor))
             rev_reg_id = item['rev_reg_id']
             (rev_reg_id, revoc_reg_def_json) = await get_revoc_reg_def(pool_handle, _did, rev_reg_id)
-            rev_regs[rev_reg_id] = json.loads(revoc_reg_def_json)
+            rev_reg_defs[rev_reg_id] = json.loads(revoc_reg_def_json)
             print("{} -> Get revocation registry".format(actor))
             timestamp = item['timestamp']
             (rev_reg_id, rev_reg_json, identifier) = await get_revoc_reg(pool_handle, _did, rev_reg_id, timestamp)

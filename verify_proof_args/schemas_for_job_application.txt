@@ -1,0 +1,1 @@
+ {"JwBhJm99W6NoMHdpEKeVsJ:2:Transcript:1.2": cred_defs_for_job_applicationcred_defs_for_job_application{"ver": "1.0", "id": "JwBhJm99W6NoMHdpEKeVsJ:2:Transcript:1.2", "name": "Transcript", "version": "1.2", "attrNames": ["last_name", "status", "degree", "ssn", "year", "first_name", "average"], "seqNo": 460}}
