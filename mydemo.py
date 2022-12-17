@@ -322,6 +322,9 @@ async def run():
     cred_for_predicate1 = \
         await get_credential_for_referent(search_handle, 'predicate1_referent')
 
+    print("[i] Credential for attribute 3")
+    print(cred_for_attr3)
+
     await anoncreds.prover_close_credentials_search_for_proof_req(search_handle)
 
     alice['creds_for_job_application_proof'] = {cred_for_attr1['referent']: cred_for_attr1,
@@ -346,8 +349,8 @@ async def run():
                                               _tails_reader=tails_reader)
     alice['last_revoc_update'] = request_time
 
-    print("[i] Ledger entities")
-    print(alice['schemas'], '\n', alice['revoc_states'])
+    # print("[i] Ledger entities")
+    # print(alice['schemas'], '\n', alice['revoc_states'])
 
     print("Alice -> Create Job-Application Proof")
     alice['job_application_requested_creds'] = json.dumps({
@@ -357,7 +360,7 @@ async def run():
             'attr6_referent': '123-45-6789'
         },
         'requested_attributes': {
-            'attr3_referent': {'cred_id': cred_for_attr3['referent'], 'revealed': True},
+            'attr3_referent': {'cred_id': cred_for_attr3['referent'], 'revealed': True, 'timestamp': 0},  # FIXME needs correct timestamp
             'attr4_referent': {'cred_id': cred_for_attr4['referent'], 'revealed': True},
             'attr5_referent': {'cred_id': cred_for_attr5['referent'], 'revealed': True},
         },
@@ -375,27 +378,30 @@ async def run():
     acme['job_application_proof'] = alice['job_application_proof']
     job_application_proof_object = json.loads(acme['job_application_proof'])
 
+    print("[i] Identifiers received from Prover:")
+    print(job_application_proof_object['identifiers'])
+
     acme['schemas_for_job_application'], acme['cred_defs_for_job_application'], \
-        acme['revoc_ref_defs_for_job_application'], acme['revoc_regs_for_job_application'] = \
+        acme['revoc_reg_defs_for_job_application'], acme['revoc_regs_for_job_application'] = \
         await verifier_get_entities_from_ledger(acme['pool'], acme['did'],
-                                                job_application_proof_object['identifiers'], acme['name'])
+                                                job_application_proof_object['identifiers'], acme['name'])  # FIXME note that the timestamp in identifiers is None
 
     print("Acme -> Verify Job-Application Proof from Alice")
-    assert 'Bachelor of Science, Marketing' == \
-           job_application_proof_object['requested_proof']['revealed_attrs']['attr3_referent']['raw']
-    assert 'graduated' == \
-           job_application_proof_object['requested_proof']['revealed_attrs']['attr4_referent']['raw']
-    assert '123-45-6789' == \
-           job_application_proof_object['requested_proof']['revealed_attrs']['attr5_referent']['raw']
-
-    assert 'Alice' == job_application_proof_object['requested_proof']['self_attested_attrs']['attr1_referent']
-    assert 'Garcia' == job_application_proof_object['requested_proof']['self_attested_attrs']['attr2_referent']
-    assert '123-45-6789' == job_application_proof_object['requested_proof']['self_attested_attrs']['attr6_referent']
+    # assert 'Bachelor of Science, Marketing' == \
+    #        job_application_proof_object['requested_proof']['revealed_attrs']['attr3_referent']['raw']
+    # assert 'graduated' == \
+    #        job_application_proof_object['requested_proof']['revealed_attrs']['attr4_referent']['raw']
+    # assert '123-45-6789' == \
+    #        job_application_proof_object['requested_proof']['revealed_attrs']['attr5_referent']['raw']
+    #
+    # assert 'Alice' == job_application_proof_object['requested_proof']['self_attested_attrs']['attr1_referent']
+    # assert 'Garcia' == job_application_proof_object['requested_proof']['self_attested_attrs']['attr2_referent']
+    # assert '123-45-6789' == job_application_proof_object['requested_proof']['self_attested_attrs']['attr6_referent']
 
     assert await anoncreds.verifier_verify_proof(acme['job_application_proof_request'], acme['job_application_proof'],
                                                  acme['schemas_for_job_application'],
                                                  acme['cred_defs_for_job_application'],
-                                                 acme['revoc_ref_defs_for_job_application'],
+                                                 acme['revoc_reg_defs_for_job_application'],
                                                  acme['revoc_regs_for_job_application'])
 
     # ---------------------------------- CLEAN UP ---------------------------------- #
@@ -467,11 +473,19 @@ async def get_revoc_reg_def(pool_handle, _did, rev_reg_id):
 
 
 async def get_revoc_reg_delta(pool_handle, _did, _rev_reg_id, _from_time, _to_time):
-    get_revoc_reg_delta_request = await ledger.build_get_revoc_reg_delta_request(_did, _rev_reg_id,
-                                                                                 _from_time, _to_time)
+    get_revoc_reg_delta_request = \
+        await ledger.build_get_revoc_reg_delta_request(_did, _rev_reg_id, _from_time, _to_time)
     get_revoc_reg_delta_response = await ledger.submit_request(pool_handle, get_revoc_reg_delta_request)
     return await ledger.parse_get_revoc_reg_delta_response(get_revoc_reg_delta_response)
     # Return (rev_reg_id, revoc_reg_delta_json, timestamp)
+
+
+async def get_revoc_reg(pool_handle, _did, _rev_reg_id, _timestamp):
+    get_revoc_reg_request = \
+        await ledger.build_get_revoc_reg_request(_did, _rev_reg_id, _timestamp)  # FIXME TypeError: an integer is required (got type NoneType)
+    get_revoc_reg_response = await ledger.submit_request(pool_handle, get_revoc_reg_request)
+    return await ledger.parse_get_revoc_reg_response(get_revoc_reg_response)
+    # Returns (rev_reg_id, rev_reg_json, identifier)
 
 
 # --------- Misc
@@ -518,8 +532,6 @@ async def prover_get_entities_from_ledger(pool_handle, _did, identifiers, actor,
     cred_defs = {}
     rev_states = {}
     for item in identifiers.values():
-        print("[!] Credential content:")
-        print(item)
         print("{} -> Get Schema from Ledger".format(actor))
         (received_schema_id, received_schema) = await get_schema(pool_handle, _did, item['schema_id'])
         schemas[received_schema_id] = json.loads(received_schema)
@@ -558,10 +570,15 @@ async def verifier_get_entities_from_ledger(pool_handle, _did, identifiers, acto
         (received_cred_def_id, received_cred_def) = await get_cred_def(pool_handle, _did, item['cred_def_id'])
         cred_defs[received_cred_def_id] = json.loads(received_cred_def)
 
-        if item['rev_reg_id'] is not None:  # TODO Get Revocation Definitions and Revocation Registries
+        if item['rev_reg_id'] is not None:
             print("{} -> Get revocation definition".format(actor))
             rev_reg_id = item['rev_reg_id']
             (rev_reg_id, revoc_reg_def_json) = await get_revoc_reg_def(pool_handle, _did, rev_reg_id)
+            rev_regs[rev_reg_id] = json.loads(revoc_reg_def_json)
+            print("{} -> Get revocation registry".format(actor))
+            timestamp = item['timestamp']
+            (rev_reg_id, rev_reg_json, identifier) = await get_revoc_reg(pool_handle, _did, rev_reg_id, timestamp)
+            rev_regs[rev_reg_id] = {timestamp: json.loads(rev_reg_json)}
 
     return json.dumps(schemas), json.dumps(cred_defs), json.dumps(rev_reg_defs), json.dumps(rev_regs)
 

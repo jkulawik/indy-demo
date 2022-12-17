@@ -1,0 +1,6 @@
+{
+  "schema_id": "RiMpvMhBWNPHULgmsD7dBC:2:Transcript:1.2",
+  "cred_def_id": "BtFvMh4KURhC9esrM3puDS:3:CL:332:TAG1",
+  "rev_reg_id": "BtFvMh4KURhC9esrM3puDS:4:BtFvMh4KURhC9esrM3puDS:3:CL:332:TAG1:CL_ACCUM:tag1",
+  "timestamp": "None"
+}
