@@ -94,13 +94,13 @@ async def run():
         'attributes': ['first_name', 'last_name', 'degree', 'status', 'year', 'average', 'ssn']
     }
     # 'attributes': ['first_name', 'last_name', 'half_price', 'max_zone']
-    (government['city_card_schema_id'], government['city_card_schema']) = \
+    (government['cc_schema_id'], government['cc_schema']) = \
         await anoncreds.issuer_create_schema(government['did'], city_card['name'], city_card['version'],
                                              json.dumps(city_card['attributes']))
-    city_card_schema_id = government['city_card_schema_id']
+    cc_schema_id = government['cc_schema_id']
 
     print("Government -> Send City Card Schema to Ledger")
-    await send_schema(government['pool'], government['wallet'], government['did'], government['city_card_schema'])
+    await send_schema(government['pool'], government['wallet'], government['did'], government['cc_schema'])
 
     time.sleep(1)  # sleep 1 second before getting schema
 
@@ -108,32 +108,28 @@ async def run():
     print("=== Carrier A Credential Definition Setup ==")
 
     print("Carrier A -> Get City Card Schema from Ledger")
-    (carrier_a['city_card_schema_id'], carrier_a['city_card_schema']) = \
-        await get_schema(carrier_a['pool'], carrier_a['did'], city_card_schema_id)
+    (carrier_a['cc_schema_id'], carrier_a['cc_schema']) = \
+        await get_schema(carrier_a['pool'],
+                         carrier_a['did'],
+                         cc_schema_id)  # Carrier must know schema ID beforehand
 
-    print("Carrier A -> Create and store in Wallet City Card Credential Definition")
-    city_card_cred_def = {
+    print("Carrier A -> Create and store City Card Credential Definition in Wallet")
+    cc_cred_def = {
         'tag': 'TAG1',
         'type': 'CL',
         'config': {"support_revocation": True}
     }
-    (carrier_a['city_card_cred_def_id'], carrier_a['city_card_cred_def']) = \
+    (carrier_a['cc_cred_def_id'], carrier_a['cc_cred_def']) = \
         await anoncreds.issuer_create_and_store_credential_def(carrier_a['wallet'], carrier_a['did'],
-                                                               carrier_a['city_card_schema'], city_card_cred_def['tag'],
-                                                               city_card_cred_def['type'],
-                                                               json.dumps(city_card_cred_def['config']))
+                                                               carrier_a['cc_schema'], cc_cred_def['tag'],
+                                                               cc_cred_def['type'],
+                                                               json.dumps(cc_cred_def['config']))
 
     print("Carrier A -> Send  City Card Credential Definition to Ledger")
-    await send_cred_def(carrier_a['pool'], carrier_a['wallet'], carrier_a['did'], carrier_a['city_card_cred_def'])
+    await send_cred_def(carrier_a['pool'], carrier_a['wallet'], carrier_a['did'], carrier_a['cc_cred_def'])
 
     print("\n=====================================================================")
     print("=== Carrier A Revocation Registry Setup ==")
-
-    # Convert existing data to variables from test
-    issuer_wallet_handle = carrier_a['wallet']
-    issuer_did = carrier_a["did"]
-    cred_def_id = carrier_a['city_card_cred_def_id']
-    pool_handle = pool_['handle']
 
     #  Issuer Creates Revocation Registry
     print("Carrier A -> Create revocation registry")
@@ -141,40 +137,42 @@ async def run():
     tails_writer = await blob_storage.open_writer('default', tails_writer_config)
 
     # NOTE: rev_reg_id is sometimes referred to as rev_reg_def_id, but they're the same thing
-    (rev_reg_id, rev_reg_def_json, rev_reg_entry_json) = \
-        await anoncreds.issuer_create_and_store_revoc_reg(issuer_wallet_handle, issuer_did, None, 'tag1', cred_def_id,
+    (carrier_a['rev_reg_id'], rev_reg_def_json, rev_reg_entry_json) = \
+        await anoncreds.issuer_create_and_store_revoc_reg(carrier_a['wallet'], carrier_a['did'], None, 'tag1',
+                                                          carrier_a['cc_cred_def_id'],
                                                           '{"max_cred_num": 5, "issuance_type":"ISSUANCE_ON_DEMAND"}',
                                                           tails_writer)
 
     # Issuer posts Revocation Registry Definition to Ledger
     print("Carrier A -> Send Revocation Registry Definition to Ledger")
-    revoc_reg_request = await ledger.build_revoc_reg_def_request(issuer_did, rev_reg_def_json)
-    await ledger.sign_and_submit_request(pool_handle, issuer_wallet_handle, issuer_did, revoc_reg_request)
+    revoc_reg_request = await ledger.build_revoc_reg_def_request(carrier_a['did'], rev_reg_def_json)
+    await ledger.sign_and_submit_request(carrier_a['pool'], carrier_a['wallet'], carrier_a['did'], revoc_reg_request)
 
     # Issuer posts Revocation Registry Entry to Ledger
     print("Carrier A -> send Revocation Registry Entry to Ledger")
-    revoc_reg_entry_request = \
-        await ledger.build_revoc_reg_entry_request(issuer_did, rev_reg_id, "CL_ACCUM", rev_reg_entry_json)
-    await ledger.sign_and_submit_request(pool_handle, issuer_wallet_handle, issuer_did, revoc_reg_entry_request)
+    revoc_reg_entry_request = await ledger.build_revoc_reg_entry_request(carrier_a['did'], carrier_a['rev_reg_id'],
+                                                                         "CL_ACCUM", rev_reg_entry_json)
+    await ledger.sign_and_submit_request(carrier_a['pool'], carrier_a['wallet'],
+                                         carrier_a['did'], revoc_reg_entry_request)
 
     time.sleep(1)  # sleep 1 second before using the freshly created revocable creds
     # ---------------------------------- EXCHANGING CREDENTIALS ---------------------------------- #
 
     print("\n=====================================================================")
-    print("== Getting City Card with Carrier A - Getting City Card Credential ==")
+    print("== Alice gets City Card from Carrier A - Getting City Card Credential ==")
 
     # Issuer creates a City Card credential
     print("Carrier A -> Create City Card Credential Offer for Alice")
-    carrier_a['city_card_cred_offer'] = \
-        await anoncreds.issuer_create_credential_offer(carrier_a['wallet'], carrier_a['city_card_cred_def_id'])
+    carrier_a['cc_cred_offer'] = \
+        await anoncreds.issuer_create_credential_offer(carrier_a['wallet'], carrier_a['cc_cred_def_id'])
 
     # Issuer sends City Card credential to prover
     print("Carrier A -> Send City Card Credential Offer to Alice")
-    alice['city_card_cred_offer'] = carrier_a['city_card_cred_offer']
-    city_card_cred_offer_object = json.loads(alice['city_card_cred_offer'])
+    alice['cc_cred_offer'] = carrier_a['cc_cred_offer']
+    cc_cred_offer_object = json.loads(alice['cc_cred_offer'])
 
-    alice['city_card_schema_id'] = city_card_cred_offer_object['schema_id']
-    alice['city_card_cred_def_id'] = city_card_cred_offer_object['cred_def_id']
+    alice['cc_schema_id'] = cc_cred_offer_object['schema_id']
+    alice['cc_cred_def_id'] = cc_cred_offer_object['cred_def_id']
 
     # Prover creates and stores master secret in their wallet
     print("Alice -> Create and store Alice Master Secret in Wallet")
@@ -182,22 +180,22 @@ async def run():
 
     # Prover gets credential def from Ledger
     print("Alice -> Get City Card Credential Definition from Ledger")
-    (alice['city_card_cred_def_id'], alice['city_card_cred_def']) = \
-        await get_cred_def(alice['pool'], alice['did'], alice['city_card_cred_def_id'])
+    (alice['cc_cred_def_id'], alice['cc_cred_def']) = \
+        await get_cred_def(alice['pool'], alice['did'], alice['cc_cred_def_id'])
 
     # Prover creates credential request for Issuer
     print("Alice -> Create City Card Credential Request for Carrier A")
-    (alice['city_card_cred_request'], alice['city_card_cred_request_metadata']) = \
+    (alice['cc_cred_request'], alice['cc_cred_request_metadata']) = \
         await anoncreds.prover_create_credential_req(alice['wallet'], alice['did'],
-                                                     alice['city_card_cred_offer'], alice['city_card_cred_def'],
+                                                     alice['cc_cred_offer'], alice['cc_cred_def'],
                                                      alice['master_secret_id'])
 
     # Prover sends credential request to Issuer
     print("Alice -> Send City Card Credential Request to Carrier A")
-    carrier_a['city_card_cred_request'] = alice['city_card_cred_request']
+    carrier_a['cc_cred_request'] = alice['cc_cred_request']
 
-    alice['city_card_cred_values'] = json.dumps({
-        "first_name": {"raw": "Alice", "encoded": "1139481716457488690172217916278103335"},
+    alice['cc_cred_values'] = json.dumps({
+        "first_name": {"raw": "Alice", "encoded": "1139481716457488690172217916278103335"},  # TODO encode func?
         "last_name": {"raw": "Garcia", "encoded": "5321642780241790123587902456789123452"},
         "degree": {"raw": "Bachelor of Science, Marketing", "encoded": "12434523576212321"},
         "status": {"raw": "graduated", "encoded": "2213454313412354"},
@@ -205,7 +203,7 @@ async def run():
         "year": {"raw": "2015", "encoded": "2015"},
         "average": {"raw": "5", "encoded": "5"}
     })
-    carrier_a['alice_city_card_cred_values'] = alice['city_card_cred_values']
+    carrier_a['alice_cc_cred_values'] = alice['cc_cred_values']
 
     # Issuer creates credential
     print("Carrier A -> Create City Card Credential for Alice")
@@ -213,48 +211,49 @@ async def run():
     tails_reader = \
         await blob_storage.open_reader('default', tails_writer_config)  # Issuer opens tails file reader
 
-    (carrier_a['city_card_cred'], local_cred_id_for_revoc, rev_reg_delta_json) = \
-        await anoncreds.issuer_create_credential(carrier_a['wallet'], carrier_a['city_card_cred_offer'],
-                                                 carrier_a['city_card_cred_request'],
-                                                 carrier_a['alice_city_card_cred_values'],
-                                                 rev_reg_id,
+    (carrier_a['cc_cred'], carrier_a['alice_cred_revoc_id'], rev_reg_delta_json) = \
+        await anoncreds.issuer_create_credential(carrier_a['wallet'], carrier_a['cc_cred_offer'],
+                                                 carrier_a['cc_cred_request'],
+                                                 carrier_a['alice_cc_cred_values'],
+                                                 carrier_a['rev_reg_id'],
                                                  tails_reader)
     # Note that in the above, revocation registry data is passed to issue the credential
 
     # Issuer Posts Revocation Registry Delta to Ledger
     print("Carrier A -> Send revocation registry delta to Ledger")
-    await send_revoc_reg_delta(pool_handle, issuer_wallet_handle, issuer_did, rev_reg_id, rev_reg_delta_json)
+    await send_revoc_reg_delta(carrier_a['pool'], carrier_a['wallet'], carrier_a['did'],
+                               carrier_a['rev_reg_id'], rev_reg_delta_json)
 
     # Issuer sends credential to Prover
     print("Carrier A -> Send City Card Credential to Alice")
-    alice['city_card_cred'] = carrier_a['city_card_cred']
+    alice['cc_cred'] = carrier_a['cc_cred']
 
     # Prover Gets RevocationRegistryDefinition from Ledger
     print("Alice -> Get revocation registry definition from Ledger")
     prover_did = alice['did']
-    credential = json.loads(alice['city_card_cred'])
+    credential = json.loads(alice['cc_cred'])
 
-    (rev_reg_id, revoc_reg_def_json) = await get_revoc_reg_def(pool_handle, prover_did, credential['rev_reg_id'])
+    (alice['rev_reg_id'], revoc_reg_def_json) = \
+        await get_revoc_reg_def(alice['pool'], prover_did, credential['rev_reg_id'])
 
     # Prover stores credential and revocation data
     print("Alice -> Store the credential and revocation data")
-    _, alice['city_card_cred_def'] = await get_cred_def(alice['pool'], alice['did'],
-                                                         alice['city_card_cred_def_id'])
+    _, alice['cc_cred_def'] = await get_cred_def(alice['pool'], alice['did'], alice['cc_cred_def_id'])
 
     await anoncreds.prover_store_credential(alice['wallet'], None,  # none = cred_id, can be any string I think
-                                            alice['city_card_cred_request_metadata'],
-                                            alice['city_card_cred'], alice['city_card_cred_def'], revoc_reg_def_json)
+                                            alice['cc_cred_request_metadata'],
+                                            alice['cc_cred'], alice['cc_cred_def'], revoc_reg_def_json)
 
     # ---------------------------------- USING THE CREDENTIALS ---------------------------------- #
 
     print("\n=====================================================================")
-    print("== Apply for the job with Carrier B - City Card proving ==")
+    print("== Drive a train with Carrier B - City Card proving ==")
 
-    print("Carrier B -> Create Job-Application Proof Request")
+    print("Carrier B -> Create Ticket Check Proof Request")
     nonce = await anoncreds.generate_nonce()
-    carrier_b['job_application_proof_request'] = json.dumps({
+    carrier_b['ticket_check_proof_request'] = json.dumps({
         'nonce': nonce,
-        'name': 'Job-Application',
+        'name': 'Ticket Check',
         'version': '0.1',
         'requested_attributes': {
             'attr1_referent': {
@@ -265,15 +264,15 @@ async def run():
             },
             'attr3_referent': {
                 'name': 'degree',
-                'restrictions': [{'cred_def_id': carrier_a['city_card_cred_def_id']}]
+                'restrictions': [{'cred_def_id': carrier_a['cc_cred_def_id']}]
             },
             'attr4_referent': {
                 'name': 'status',
-                'restrictions': [{'cred_def_id': carrier_a['city_card_cred_def_id']}]
+                'restrictions': [{'cred_def_id': carrier_a['cc_cred_def_id']}]
             },
             'attr5_referent': {
                 'name': 'ssn',
-                'restrictions': [{'cred_def_id': carrier_a['city_card_cred_def_id']}]
+                'restrictions': [{'cred_def_id': carrier_a['cc_cred_def_id']}]
             },
             'attr6_referent': {
                 'name': 'phone_number'
@@ -284,19 +283,19 @@ async def run():
                 'name': 'average',
                 'p_type': '>=',
                 'p_value': 4,
-                'restrictions': [{'cred_def_id': carrier_a['city_card_cred_def_id']}]
+                'restrictions': [{'cred_def_id': carrier_a['cc_cred_def_id']}]
             }
         }
     })
 
-    print("Carrier B -> Send Job-Application Proof Request to Alice")
-    alice['job_application_proof_request'] = carrier_b['job_application_proof_request']
+    print("Carrier B -> Send Ticket Check Proof Request to Alice")
+    alice['ticket_check_proof_request'] = carrier_b['ticket_check_proof_request']
 
-    print("Alice -> Get credentials for Job-Application Proof Request")
+    print("Alice -> Get credentials for Ticket Check Proof Request")
 
     search_handle = \
         await anoncreds.prover_search_credentials_for_proof_req(alice['wallet'],
-                                                                alice['job_application_proof_request'], None)
+                                                                alice['ticket_check_proof_request'], None)
 
     # get_credential_for_referent = prover_fetch_credentials_for_proof_req
     cred_for_attr1 = await get_credential_for_referent(search_handle, 'attr1_referent')
@@ -312,14 +311,14 @@ async def run():
 
     await anoncreds.prover_close_credentials_search_for_proof_req(search_handle)
 
-    alice['creds_for_job_application_proof'] = {cred_for_attr1['referent']: cred_for_attr1,
-                                                cred_for_attr2['referent']: cred_for_attr2,
-                                                cred_for_attr3['referent']: cred_for_attr3,
-                                                cred_for_attr4['referent']: cred_for_attr4,
-                                                cred_for_attr5['referent']: cred_for_attr5,
-                                                cred_for_predicate1['referent']: cred_for_predicate1}
+    alice['creds_for_ticket_check_proof'] = {cred_for_attr1['referent']: cred_for_attr1,
+                                             cred_for_attr2['referent']: cred_for_attr2,
+                                             cred_for_attr3['referent']: cred_for_attr3,
+                                             cred_for_attr4['referent']: cred_for_attr4,
+                                             cred_for_attr5['referent']: cred_for_attr5,
+                                             cred_for_predicate1['referent']: cred_for_predicate1}
     # NOTE: the search returns the same cred (referent) each time, so this dict has one entry that's
-    # being readded and is assumedly automatically skipped
+    # being readded and is presumably automatically skipped
 
     # Prover Gets RevocationRegistryDelta from Ledger
     # Prover Creates Revocation State
@@ -328,14 +327,14 @@ async def run():
     request_time = get_current_time()
     alice['schemas'], alice['cred_defs'], alice['revoc_states'], timestamps = \
         await prover_get_entities_from_ledger(alice['pool'], alice['did'],
-                                              alice['creds_for_job_application_proof'], alice['name'],
+                                              alice['creds_for_ticket_check_proof'], alice['name'],
                                               _from_time=alice['last_revoc_update'],
                                               _to_time=request_time,
                                               _tails_reader=tails_reader)
     alice['last_revoc_update'] = request_time
 
-    print("Alice -> Create Job-Application Proof")
-    alice['job_application_requested_creds'] = json.dumps({
+    print("Alice -> Create Ticket Check Proof")
+    alice['ticket_check_requested_creds'] = json.dumps({
         'self_attested_attributes': {
             'attr1_referent': 'Alice',
             'attr2_referent': 'Garcia',
@@ -349,19 +348,19 @@ async def run():
         'requested_predicates': {'predicate1_referent': {'cred_id': cred_for_predicate1['referent'], 'timestamp': timestamps[cred_for_attr4['referent']]}}
     })
 
-    alice['job_application_proof'] = \
-        await anoncreds.prover_create_proof(alice['wallet'], alice['job_application_proof_request'],
-                                            alice['job_application_requested_creds'], alice['master_secret_id'],
+    alice['ticket_check_proof'] = \
+        await anoncreds.prover_create_proof(alice['wallet'], alice['ticket_check_proof_request'],
+                                            alice['ticket_check_requested_creds'], alice['master_secret_id'],
                                             alice['schemas'], alice['cred_defs'], alice['revoc_states'])
 
-    print("Alice -> Send Job-Application Proof to Carrier B")
-    carrier_b['job_application_proof'] = alice['job_application_proof']
-    job_application_proof_object = json.loads(carrier_b['job_application_proof'])
+    print("Alice -> Send Ticket Check Proof to Carrier B")
+    carrier_b['ticket_check_proof'] = alice['ticket_check_proof']
+    ticket_check_proof_object = json.loads(carrier_b['ticket_check_proof'])
 
     print("[i] Identifiers received from Prover:")
-    print(job_application_proof_object['identifiers'])
+    print(ticket_check_proof_object['identifiers'])
 
-    for identifier in job_application_proof_object['identifiers']:
+    for identifier in ticket_check_proof_object['identifiers']:
         assert identifier['timestamp'] is not None
         # Put correct timestamp in the requested credential if this fails.
         # otherwise get_revoc_reg() will fail while verifying
@@ -369,24 +368,24 @@ async def run():
     carrier_b['schemas_for_job_application'], carrier_b['cred_defs_for_job_application'], \
         carrier_b['revoc_reg_defs_for_job_application'], carrier_b['revoc_regs_for_job_application'] = \
         await verifier_get_entities_from_ledger(carrier_b['pool'], carrier_b['did'],
-                                                job_application_proof_object['identifiers'], carrier_b['name'])
+                                                ticket_check_proof_object['identifiers'], carrier_b['name'])
 
-    print("Carrier B -> Verify Job-Application Proof from Alice")
+    print("Carrier B -> Verify Ticket Check Proof from Alice")
     # assert 'Bachelor of Science, Marketing' == \
-    #        job_application_proof_object['requested_proof']['revealed_attrs']['attr3_referent']['raw']
+    #        ticket_check_proof_object['requested_proof']['revealed_attrs']['attr3_referent']['raw']
     # assert 'graduated' == \
-    #        job_application_proof_object['requested_proof']['revealed_attrs']['attr4_referent']['raw']
+    #        ticket_check_proof_object['requested_proof']['revealed_attrs']['attr4_referent']['raw']
     # assert '123-45-6789' == \
-    #        job_application_proof_object['requested_proof']['revealed_attrs']['attr5_referent']['raw']
+    #        ticket_check_proof_object['requested_proof']['revealed_attrs']['attr5_referent']['raw']
     #
-    # assert 'Alice' == job_application_proof_object['requested_proof']['self_attested_attrs']['attr1_referent']
-    # assert 'Garcia' == job_application_proof_object['requested_proof']['self_attested_attrs']['attr2_referent']
-    # assert '123-45-6789' == job_application_proof_object['requested_proof']['self_attested_attrs']['attr6_referent']
+    # assert 'Alice' == ticket_check_proof_object['requested_proof']['self_attested_attrs']['attr1_referent']
+    # assert 'Garcia' == ticket_check_proof_object['requested_proof']['self_attested_attrs']['attr2_referent']
+    # assert '123-45-6789' == ticket_check_proof_object['requested_proof']['self_attested_attrs']['attr6_referent']
 
     # for testing
     # try:
-    #     assert await anoncreds.verifier_verify_proof(Carrier B['job_application_proof_request'],
-    #                                                  Carrier B['job_application_proof'],
+    #     assert await anoncreds.verifier_verify_proof(Carrier B['ticket_check_proof_request'],
+    #                                                  Carrier B['ticket_check_proof'],
     #                                                  Carrier B['schemas_for_job_application'],
     #                                                  Carrier B['cred_defs_for_job_application'],
     #                                                  Carrier B['revoc_reg_defs_for_job_application'],
@@ -396,7 +395,8 @@ async def run():
     #     err = errorcode_to_exception(ex.error_code)
     #     print(err)
 
-    assert await anoncreds.verifier_verify_proof(carrier_b['job_application_proof_request'], carrier_b['job_application_proof'],
+    assert await anoncreds.verifier_verify_proof(carrier_b['ticket_check_proof_request'],
+                                                 carrier_b['ticket_check_proof'],
                                                  carrier_b['schemas_for_job_application'],
                                                  carrier_b['cred_defs_for_job_application'],
                                                  carrier_b['revoc_reg_defs_for_job_application'],
@@ -406,11 +406,13 @@ async def run():
     print("== Revoke credentials ==")
 
     print("Carrier A -> Revoke proof")
-    rev_reg_delta_json = await anoncreds.issuer_revoke_credential(issuer_wallet_handle, tails_reader,
-                                                                  rev_reg_id, local_cred_id_for_revoc)
+    rev_reg_delta_json = await anoncreds.issuer_revoke_credential(carrier_a['wallet'], tails_reader,
+                                                                  carrier_a['rev_reg_id'],
+                                                                  carrier_a['alice_cred_revoc_id'])
 
     print("Carrier A -> Send revocation registry delta to Ledger")
-    await send_revoc_reg_delta(pool_handle, issuer_wallet_handle, issuer_did, rev_reg_id, rev_reg_delta_json)
+    await send_revoc_reg_delta(carrier_a['pool'], carrier_a['wallet'], carrier_a['did'],
+                               carrier_a['rev_reg_id'], rev_reg_delta_json)
 
     print("\n=====================================================================")
     print("== Prover tries to use revoked credentials ==")
