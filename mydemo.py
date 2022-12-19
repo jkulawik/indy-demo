@@ -7,12 +7,9 @@ from indy.error import ErrorCode, errorcode_to_exception
 
 
 async def run():
-    print("Getting started -> started")
     print("\n=====================================================================")
-    print("=== Getting pool connection")
-
-    # Set protocol version 2 to work with Indy Node 1.4
-    await pool.set_protocol_version(2)
+    print("=== Connect to pool and set up the Steward")
+    await pool.set_protocol_version(2)  # Set protocol version 2 to work with Indy Node 1.4
 
     pool_ = {
         'name': 'pool1',
@@ -27,9 +24,7 @@ async def run():
             pass
     pool_['handle'] = await pool.open_pool_ledger(pool_['name'], None)
 
-    print("\n=====================================================================")
-    print("=== Getting Endorser credentials for Faber, Acme and Government")
-
+    print("Sovrin Steward -> Create wallet")
     steward = {
         'name': "Sovrin Steward",
         'wallet_config': json.dumps({'id': 'sovrin_steward_wallet'}),
@@ -37,15 +32,14 @@ async def run():
         'pool': pool_['handle'],
         'seed': '000000000000000000000000Steward1'
     }
-
     await create_wallet(steward)
 
-    print("Sovrin Steward -> Create and store in Wallet DID from seed")
+    print("Sovrin Steward -> Create and store DID from seed in Wallet")
     steward['did_info'] = json.dumps({'seed': steward['seed']})
     steward['did'], steward['key'] = await did.create_and_store_my_did(steward['wallet'], steward['did_info'])
 
     print("\n=====================================================================")
-    print("== Getting Endorser credentials - Government getting Verinym")
+    print("=== Getting Endorser credentials for Carrier A, Carrier B and Government")
 
     government = {
         'name': 'Government',
@@ -54,34 +48,25 @@ async def run():
         'pool': pool_['handle'],
         'role': 'ENDORSER'
     }
+    await create_wallet_and_register_verinym(steward, government)
 
-    await getting_verinym(steward, government)
-
-    print("\n=====================================================================")
-    print("== Getting Endorser credentials - Faber getting Verinym")
-
-    faber = {
-        'name': 'Faber',
-        'wallet_config': json.dumps({'id': 'faber_wallet'}),
-        'wallet_credentials': json.dumps({'key': 'faber_wallet_key'}),
+    carrier_a = {
+        'name': 'Carrier A',
+        'wallet_config': json.dumps({'id': 'carrier_a_wallet'}),
+        'wallet_credentials': json.dumps({'key': 'carrier_a_wallet_key'}),
         'pool': pool_['handle'],
         'role': 'ENDORSER'
     }
+    await create_wallet_and_register_verinym(steward, carrier_a)
 
-    await getting_verinym(steward, faber)
-
-    print("\n=====================================================================")
-    print("== Getting Endorser credentials - Acme getting Verinym")
-
-    acme = {
-        'name': 'Acme',
-        'wallet_config': json.dumps({'id': 'acme_wallet'}),
-        'wallet_credentials': json.dumps({'key': 'acme_wallet_key'}),
+    carrier_b = {
+        'name': 'Carrier B',
+        'wallet_config': json.dumps({'id': 'carrier_b_wallet'}),
+        'wallet_credentials': json.dumps({'key': 'carrier_b_wallet_key'}),
         'pool': pool_['handle'],
         'role': 'ENDORSER'
     }
-
-    await getting_verinym(steward, acme)
+    await create_wallet_and_register_verinym(steward, carrier_b)
 
     print("\n=====================================================================")
     print("== Alice setup ==")
@@ -94,6 +79,7 @@ async def run():
         'last_revoc_update': None
     }
     await create_wallet(alice)
+    print("Alice -> Create DID and store it in her wallet")
     (alice['did'], alice['key']) = await did.create_and_store_my_did(alice['wallet'], "{}")
 
     # ---------------------------------- SCHEMA AND CRED DEF SET-UP ---------------------------------- #
@@ -101,10 +87,10 @@ async def run():
     print("\n=====================================================================")
     print("=== Credential Schemas Setup ==")
 
-    print("Government -> Create Transcript Schema")
+    print("Government -> Create City Card Schema")
     transcript = {
-        'name': 'Transcript',
-        'version': '1.2',
+        'name': 'City Card',
+        'version': '1.0',
         'attributes': ['first_name', 'last_name', 'degree', 'status', 'year', 'average', 'ssn']
     }
     (government['transcript_schema_id'], government['transcript_schema']) = \
@@ -118,38 +104,38 @@ async def run():
     time.sleep(1)  # sleep 1 second before getting schema
 
     print("\n=====================================================================")
-    print("=== Faber Credential Definition Setup ==")
+    print("=== Carrier A Credential Definition Setup ==")
 
-    print("Faber -> Get Transcript Schema from Ledger")
-    (faber['transcript_schema_id'], faber['transcript_schema']) = \
-        await get_schema(faber['pool'], faber['did'], transcript_schema_id)
+    print("Carrier A -> Get Transcript Schema from Ledger")
+    (carrier_a['transcript_schema_id'], carrier_a['transcript_schema']) = \
+        await get_schema(carrier_a['pool'], carrier_a['did'], transcript_schema_id)
 
-    print("Faber -> Create and store in Wallet Faber Transcript Credential Definition")
+    print("Carrier A -> Create and store in Wallet Transcript Credential Definition")
     transcript_cred_def = {
         'tag': 'TAG1',
         'type': 'CL',
         'config': {"support_revocation": True}
     }
-    (faber['transcript_cred_def_id'], faber['transcript_cred_def']) = \
-        await anoncreds.issuer_create_and_store_credential_def(faber['wallet'], faber['did'],
-                                                               faber['transcript_schema'], transcript_cred_def['tag'],
+    (carrier_a['transcript_cred_def_id'], carrier_a['transcript_cred_def']) = \
+        await anoncreds.issuer_create_and_store_credential_def(carrier_a['wallet'], carrier_a['did'],
+                                                               carrier_a['transcript_schema'], transcript_cred_def['tag'],
                                                                transcript_cred_def['type'],
                                                                json.dumps(transcript_cred_def['config']))
 
-    print("Faber -> Send  Faber Transcript Credential Definition to Ledger")
-    await send_cred_def(faber['pool'], faber['wallet'], faber['did'], faber['transcript_cred_def'])
+    print("Carrier A -> Send  Transcript Credential Definition to Ledger")
+    await send_cred_def(carrier_a['pool'], carrier_a['wallet'], carrier_a['did'], carrier_a['transcript_cred_def'])
 
     print("\n=====================================================================")
-    print("=== Faber Revocation Registry Setup ==")
+    print("=== Carrier A Revocation Registry Setup ==")
 
     # Convert existing data to variables from test
-    issuer_wallet_handle = faber['wallet']
-    issuer_did = faber["did"]
-    cred_def_id = faber['transcript_cred_def_id']
+    issuer_wallet_handle = carrier_a['wallet']
+    issuer_did = carrier_a["did"]
+    cred_def_id = carrier_a['transcript_cred_def_id']
     pool_handle = pool_['handle']
 
     #  Issuer Creates Revocation Registry
-    print("Faber -> Create revocation registry")
+    print("Carrier A -> Create revocation registry")
     tails_writer_config = json.dumps({'base_dir': '/home/indy/sandbox/tails', 'uri_pattern': ''})
     tails_writer = await blob_storage.open_writer('default', tails_writer_config)
 
@@ -160,12 +146,12 @@ async def run():
                                                           tails_writer)
 
     # Issuer posts Revocation Registry Definition to Ledger
-    print("Faber -> Send Revocation Registry Definition to Ledger")
+    print("Carrier A -> Send Revocation Registry Definition to Ledger")
     revoc_reg_request = await ledger.build_revoc_reg_def_request(issuer_did, rev_reg_def_json)
     await ledger.sign_and_submit_request(pool_handle, issuer_wallet_handle, issuer_did, revoc_reg_request)
 
     # Issuer posts Revocation Registry Entry to Ledger
-    print("Faber -> send Revocation Registry Entry to Ledger")
+    print("Carrier A -> send Revocation Registry Entry to Ledger")
     revoc_reg_entry_request = \
         await ledger.build_revoc_reg_entry_request(issuer_did, rev_reg_id, "CL_ACCUM", rev_reg_entry_json)
     await ledger.sign_and_submit_request(pool_handle, issuer_wallet_handle, issuer_did, revoc_reg_entry_request)
@@ -174,16 +160,16 @@ async def run():
     # ---------------------------------- EXCHANGING CREDENTIALS ---------------------------------- #
 
     print("\n=====================================================================")
-    print("== Getting Transcript with Faber - Getting Transcript Credential ==")
+    print("== Getting Transcript with Carrier A - Getting Transcript Credential ==")
 
     # Issuer creates transcript credential
-    print("Faber -> Create Transcript Credential Offer for Alice")
-    faber['transcript_cred_offer'] = \
-        await anoncreds.issuer_create_credential_offer(faber['wallet'], faber['transcript_cred_def_id'])
+    print("Carrier A -> Create Transcript Credential Offer for Alice")
+    carrier_a['transcript_cred_offer'] = \
+        await anoncreds.issuer_create_credential_offer(carrier_a['wallet'], carrier_a['transcript_cred_def_id'])
 
     # Issuer sends transcript credential to prover
-    print("Faber -> Send Transcript Credential Offer to Alice")
-    alice['transcript_cred_offer'] = faber['transcript_cred_offer']
+    print("Carrier A -> Send Transcript Credential Offer to Alice")
+    alice['transcript_cred_offer'] = carrier_a['transcript_cred_offer']
     transcript_cred_offer_object = json.loads(alice['transcript_cred_offer'])
 
     alice['transcript_schema_id'] = transcript_cred_offer_object['schema_id']
@@ -194,20 +180,20 @@ async def run():
     alice['master_secret_id'] = await anoncreds.prover_create_master_secret(alice['wallet'], None)
 
     # Prover gets credential def from Ledger
-    print("Alice -> Get Faber Transcript Credential Definition from Ledger")
-    (alice['faber_transcript_cred_def_id'], alice['faber_transcript_cred_def']) = \
+    print("Alice -> Get Transcript Credential Definition from Ledger")
+    (alice['transcript_cred_def_id'], alice['transcript_cred_def']) = \
         await get_cred_def(alice['pool'], alice['did'], alice['transcript_cred_def_id'])
 
     # Prover creates credential request for Issuer
-    print("Alice -> Create Transcript Credential Request for Faber")
+    print("Alice -> Create Transcript Credential Request for Carrier A")
     (alice['transcript_cred_request'], alice['transcript_cred_request_metadata']) = \
         await anoncreds.prover_create_credential_req(alice['wallet'], alice['did'],
-                                                     alice['transcript_cred_offer'], alice['faber_transcript_cred_def'],
+                                                     alice['transcript_cred_offer'], alice['transcript_cred_def'],
                                                      alice['master_secret_id'])
 
     # Prover sends credential request to Issuer
-    print("Alice -> Send Transcript Credential Request to Faber")
-    faber['transcript_cred_request'] = alice['transcript_cred_request']
+    print("Alice -> Send Transcript Credential Request to Carrier A")
+    carrier_a['transcript_cred_request'] = alice['transcript_cred_request']
 
     alice['transcript_cred_values'] = json.dumps({
         "first_name": {"raw": "Alice", "encoded": "1139481716457488690172217916278103335"},
@@ -218,29 +204,29 @@ async def run():
         "year": {"raw": "2015", "encoded": "2015"},
         "average": {"raw": "5", "encoded": "5"}
     })
-    faber['alice_transcript_cred_values'] = alice['transcript_cred_values']
+    carrier_a['alice_transcript_cred_values'] = alice['transcript_cred_values']
 
     # Issuer creates credential
-    print("Faber -> Create Transcript Credential for Alice")
+    print("Carrier A -> Create Transcript Credential for Alice")
 
     tails_reader = \
         await blob_storage.open_reader('default', tails_writer_config)  # Issuer opens tails file reader
 
-    (faber['transcript_cred'], local_cred_id_for_revoc, rev_reg_delta_json) = \
-        await anoncreds.issuer_create_credential(faber['wallet'], faber['transcript_cred_offer'],
-                                                 faber['transcript_cred_request'],
-                                                 faber['alice_transcript_cred_values'],
+    (carrier_a['transcript_cred'], local_cred_id_for_revoc, rev_reg_delta_json) = \
+        await anoncreds.issuer_create_credential(carrier_a['wallet'], carrier_a['transcript_cred_offer'],
+                                                 carrier_a['transcript_cred_request'],
+                                                 carrier_a['alice_transcript_cred_values'],
                                                  rev_reg_id,
                                                  tails_reader)
     # Note that in the above, revocation registry data is passed to issue the credential
 
     # Issuer Posts Revocation Registry Delta to Ledger
-    print("Faber -> Send revocation registry delta to Ledger")
+    print("Carrier A -> Send revocation registry delta to Ledger")
     await send_revoc_reg_delta(pool_handle, issuer_wallet_handle, issuer_did, rev_reg_id, rev_reg_delta_json)
 
     # Issuer sends credential to Prover
-    print("Faber -> Send Transcript Credential to Alice")
-    alice['transcript_cred'] = faber['transcript_cred']
+    print("Carrier A -> Send Transcript Credential to Alice")
+    alice['transcript_cred'] = carrier_a['transcript_cred']
 
     # Prover Gets RevocationRegistryDefinition from Ledger
     print("Alice -> Get revocation registry definition from Ledger")
@@ -261,11 +247,11 @@ async def run():
     # ---------------------------------- USING THE CREDENTIALS ---------------------------------- #
 
     print("\n=====================================================================")
-    print("== Apply for the job with Acme - Transcript proving ==")
+    print("== Apply for the job with Carrier B - Transcript proving ==")
 
-    print("Acme -> Create Job-Application Proof Request")
+    print("Carrier B -> Create Job-Application Proof Request")
     nonce = await anoncreds.generate_nonce()
-    acme['job_application_proof_request'] = json.dumps({
+    carrier_b['job_application_proof_request'] = json.dumps({
         'nonce': nonce,
         'name': 'Job-Application',
         'version': '0.1',
@@ -278,15 +264,15 @@ async def run():
             },
             'attr3_referent': {
                 'name': 'degree',
-                'restrictions': [{'cred_def_id': faber['transcript_cred_def_id']}]
+                'restrictions': [{'cred_def_id': carrier_a['transcript_cred_def_id']}]
             },
             'attr4_referent': {
                 'name': 'status',
-                'restrictions': [{'cred_def_id': faber['transcript_cred_def_id']}]
+                'restrictions': [{'cred_def_id': carrier_a['transcript_cred_def_id']}]
             },
             'attr5_referent': {
                 'name': 'ssn',
-                'restrictions': [{'cred_def_id': faber['transcript_cred_def_id']}]
+                'restrictions': [{'cred_def_id': carrier_a['transcript_cred_def_id']}]
             },
             'attr6_referent': {
                 'name': 'phone_number'
@@ -297,13 +283,13 @@ async def run():
                 'name': 'average',
                 'p_type': '>=',
                 'p_value': 4,
-                'restrictions': [{'cred_def_id': faber['transcript_cred_def_id']}]
+                'restrictions': [{'cred_def_id': carrier_a['transcript_cred_def_id']}]
             }
         }
     })
 
-    print("Acme -> Send Job-Application Proof Request to Alice")
-    alice['job_application_proof_request'] = acme['job_application_proof_request']
+    print("Carrier B -> Send Job-Application Proof Request to Alice")
+    alice['job_application_proof_request'] = carrier_b['job_application_proof_request']
 
     print("Alice -> Get credentials for Job-Application Proof Request")
 
@@ -347,9 +333,6 @@ async def run():
                                               _tails_reader=tails_reader)
     alice['last_revoc_update'] = request_time
 
-    # print("[i] Ledger entities")
-    # print(alice['schemas'], '\n', alice['revoc_states'])
-
     print("Alice -> Create Job-Application Proof")
     alice['job_application_requested_creds'] = json.dumps({
         'self_attested_attributes': {
@@ -370,9 +353,9 @@ async def run():
                                             alice['job_application_requested_creds'], alice['master_secret_id'],
                                             alice['schemas'], alice['cred_defs'], alice['revoc_states'])
 
-    print("Alice -> Send Job-Application Proof to Acme")
-    acme['job_application_proof'] = alice['job_application_proof']
-    job_application_proof_object = json.loads(acme['job_application_proof'])
+    print("Alice -> Send Job-Application Proof to Carrier B")
+    carrier_b['job_application_proof'] = alice['job_application_proof']
+    job_application_proof_object = json.loads(carrier_b['job_application_proof'])
 
     print("[i] Identifiers received from Prover:")
     print(job_application_proof_object['identifiers'])
@@ -382,12 +365,12 @@ async def run():
         # Put correct timestamp in the requested credential if this fails.
         # otherwise get_revoc_reg() will fail while verifying
 
-    acme['schemas_for_job_application'], acme['cred_defs_for_job_application'], \
-        acme['revoc_reg_defs_for_job_application'], acme['revoc_regs_for_job_application'] = \
-        await verifier_get_entities_from_ledger(acme['pool'], acme['did'],
-                                                job_application_proof_object['identifiers'], acme['name'])
+    carrier_b['schemas_for_job_application'], carrier_b['cred_defs_for_job_application'], \
+        carrier_b['revoc_reg_defs_for_job_application'], carrier_b['revoc_regs_for_job_application'] = \
+        await verifier_get_entities_from_ledger(carrier_b['pool'], carrier_b['did'],
+                                                job_application_proof_object['identifiers'], carrier_b['name'])
 
-    print("Acme -> Verify Job-Application Proof from Alice")
+    print("Carrier B -> Verify Job-Application Proof from Alice")
     # assert 'Bachelor of Science, Marketing' == \
     #        job_application_proof_object['requested_proof']['revealed_attrs']['attr3_referent']['raw']
     # assert 'graduated' == \
@@ -401,31 +384,31 @@ async def run():
 
     # for testing
     # try:
-    #     assert await anoncreds.verifier_verify_proof(acme['job_application_proof_request'],
-    #                                                  acme['job_application_proof'],
-    #                                                  acme['schemas_for_job_application'],
-    #                                                  acme['cred_defs_for_job_application'],
-    #                                                  acme['revoc_reg_defs_for_job_application'],
-    #                                                  acme['revoc_regs_for_job_application'])
+    #     assert await anoncreds.verifier_verify_proof(Carrier B['job_application_proof_request'],
+    #                                                  Carrier B['job_application_proof'],
+    #                                                  Carrier B['schemas_for_job_application'],
+    #                                                  Carrier B['cred_defs_for_job_application'],
+    #                                                  Carrier B['revoc_reg_defs_for_job_application'],
+    #                                                  Carrier B['revoc_regs_for_job_application'])
     # except IndyError as ex:
     #     print("[!] Exception occured")
     #     err = errorcode_to_exception(ex.error_code)
     #     print(err)
 
-    assert await anoncreds.verifier_verify_proof(acme['job_application_proof_request'], acme['job_application_proof'],
-                                                 acme['schemas_for_job_application'],
-                                                 acme['cred_defs_for_job_application'],
-                                                 acme['revoc_reg_defs_for_job_application'],
-                                                 acme['revoc_regs_for_job_application'])
+    assert await anoncreds.verifier_verify_proof(carrier_b['job_application_proof_request'], carrier_b['job_application_proof'],
+                                                 carrier_b['schemas_for_job_application'],
+                                                 carrier_b['cred_defs_for_job_application'],
+                                                 carrier_b['revoc_reg_defs_for_job_application'],
+                                                 carrier_b['revoc_regs_for_job_application'])
 
     print("\n=====================================================================")
     print("== Revoke credentials ==")
 
-    print("Faber -> Revoke proof")
+    print("Carrier A -> Revoke proof")
     rev_reg_delta_json = await anoncreds.issuer_revoke_credential(issuer_wallet_handle, tails_reader,
                                                                   rev_reg_id, local_cred_id_for_revoc)
 
-    print("Faber -> Send revocation registry delta to Ledger")
+    print("Carrier A -> Send revocation registry delta to Ledger")
     await send_revoc_reg_delta(pool_handle, issuer_wallet_handle, issuer_did, rev_reg_id, rev_reg_delta_json)
 
     print("\n=====================================================================")
@@ -444,13 +427,13 @@ async def run():
     await wallet.close_wallet(government['wallet'])
     await wallet.delete_wallet(government['wallet_config'], government['wallet_credentials'])
 
-    print("Faber -> Close and Delete wallet")
-    await wallet.close_wallet(faber['wallet'])
-    await wallet.delete_wallet(faber['wallet_config'], faber['wallet_credentials'])
+    print("Carrier A -> Close and Delete wallet")
+    await wallet.close_wallet(carrier_a['wallet'])
+    await wallet.delete_wallet(carrier_a['wallet_config'], carrier_a['wallet_credentials'])
 
-    print("Acme -> Close and Delete wallet")
-    await wallet.close_wallet(acme['wallet'])
-    await wallet.delete_wallet(acme['wallet_config'], acme['wallet_credentials'])
+    print("Carrier B -> Close and Delete wallet")
+    await wallet.close_wallet(carrier_b['wallet'])
+    await wallet.delete_wallet(carrier_b['wallet_config'], carrier_b['wallet_credentials'])
 
     print("Alice -> Close and Delete wallet")
     await wallet.close_wallet(alice['wallet'])
@@ -460,7 +443,7 @@ async def run():
     await pool.close_pool_ledger(pool_['handle'])
     await pool.delete_pool_ledger_config(pool_['name'])
 
-    print("Getting started -> done")
+    print("Demo finished.")
 
 
 # ---------------------------------- HELPER FUNCTIONS ---------------------------------- #
@@ -534,19 +517,21 @@ async def create_wallet(identity):
     identity['wallet'] = await wallet.open_wallet(identity['wallet_config'], identity['wallet_credentials'])
 
 
-async def getting_verinym(from_, to):
-    await create_wallet(to)
+async def create_wallet_and_register_verinym(_steward, recipient):
+    await create_wallet(recipient)
+    print("{} -> Get Verinym through Steward".format(recipient['name']))
 
-    (to['did'], to['key']) = await did.create_and_store_my_did(to['wallet'], "{}")
+    (recipient['did'], recipient['key']) = await did.create_and_store_my_did(recipient['wallet'], "{}")
 
-    from_['info'] = {
-        'did': to['did'],
-        'verkey': to['key'],
-        'role': to['role'] or None
-    }
-
-    await send_nym(from_['pool'], from_['wallet'], from_['did'], from_['info']['did'],
-                   from_['info']['verkey'], from_['info']['role'])
+    recipient_verkey = recipient['key']
+    recipient_role = recipient['role'] or None
+    # _steward['info'] = {
+    #     'did': recipient['did'],
+    #     'verkey': recipient['key'],
+    #     'role': recipient['role'] or None
+    # }
+    await send_nym(_steward['pool'], _steward['wallet'], _steward['did'],
+                   new_did=recipient['did'], new_key=recipient_verkey, role=recipient_role)
 
 
 async def get_credential_for_referent(_search_handle, referent):
@@ -567,25 +552,26 @@ async def prover_get_entities_from_ledger(pool_handle, _did, identifiers, actor,
     cred_defs = {}
     rev_states = {}
     timestamps = {}  # Timestamps need to be saved to be put in the request proof
+    print("{} -> Get data from Ledger:".format(actor))
 
     for item in identifiers.values():
-        print("{} -> Get Schema from Ledger".format(actor))
+        print("\t- Schemas")
         (received_schema_id, received_schema) = await get_schema(pool_handle, _did, item['schema_id'])
         schemas[received_schema_id] = json.loads(received_schema)
 
-        print("{} -> Get Credential Definition from Ledger".format(actor))
+        print("\t- Credential Definitions")
         (received_cred_def_id, received_cred_def) = await get_cred_def(pool_handle, _did, item['cred_def_id'])
         cred_defs[received_cred_def_id] = json.loads(received_cred_def)
 
         if item['rev_reg_id'] is not None:
-            print("{} -> Get Revoc delta from Ledger".format(actor))
+            print("\t- Revocation registry delta")
             rev_reg_id = item['rev_reg_id']
             (rev_reg_id, revoc_reg_delta_json, timestamp) = \
                 await get_revoc_reg_delta(pool_handle, _did, rev_reg_id, _from_time, _to_time)
             referent = item['referent']
             timestamps[referent] = timestamp
             print("[i] Timestamp for", referent, "=", timestamp)
-            print("{} -> Get revocation definition".format(actor))
+            print("\t- Revocation registry definition")
             (rev_reg_id, revoc_reg_def_json) = await get_revoc_reg_def(pool_handle, _did, rev_reg_id)
             print("{} -> Create revocation state".format(actor))
             rev_state_json = await anoncreds.create_revocation_state(_tails_reader, revoc_reg_def_json,
@@ -601,21 +587,23 @@ async def verifier_get_entities_from_ledger(pool_handle, _did, identifiers, acto
     cred_defs = {}
     rev_reg_defs = {}
     rev_regs = {}
+    print("{} -> Get data from Ledger:".format(actor))
+
     for item in identifiers:
-        print("{} -> Get Schema from Ledger".format(actor))
+        print("\t- Schemas")
         (received_schema_id, received_schema) = await get_schema(pool_handle, _did, item['schema_id'])
         schemas[received_schema_id] = json.loads(received_schema)
 
-        print("{} -> Get Credential Definition from Ledger".format(actor))
+        print("\t- Credential Definitions")
         (received_cred_def_id, received_cred_def) = await get_cred_def(pool_handle, _did, item['cred_def_id'])
         cred_defs[received_cred_def_id] = json.loads(received_cred_def)
 
         if item['rev_reg_id'] is not None:
-            print("{} -> Get revocation definition".format(actor))
+            print("\t- Revocation registry definition")
             rev_reg_id = item['rev_reg_id']
             (rev_reg_id, revoc_reg_def_json) = await get_revoc_reg_def(pool_handle, _did, rev_reg_id)
             rev_reg_defs[rev_reg_id] = json.loads(revoc_reg_def_json)
-            print("{} -> Get revocation registry".format(actor))
+            print("\t- Revocation registry")
             timestamp = item['timestamp']
             (rev_reg_id, rev_reg_json, identifier) = await get_revoc_reg(pool_handle, _did, rev_reg_id, timestamp)
             rev_regs[rev_reg_id] = {timestamp: json.loads(rev_reg_json)}
