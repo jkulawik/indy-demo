@@ -88,42 +88,43 @@ async def run():
     print("=== Credential Schemas Setup ==")
 
     print("Government -> Create City Card Schema")
-    transcript = {
+    city_card = {
         'name': 'City Card',
         'version': '1.0',
         'attributes': ['first_name', 'last_name', 'degree', 'status', 'year', 'average', 'ssn']
     }
-    (government['transcript_schema_id'], government['transcript_schema']) = \
-        await anoncreds.issuer_create_schema(government['did'], transcript['name'], transcript['version'],
-                                             json.dumps(transcript['attributes']))
-    transcript_schema_id = government['transcript_schema_id']
+    # 'attributes': ['first_name', 'last_name', 'half_price', 'max_zone']
+    (government['city_card_schema_id'], government['city_card_schema']) = \
+        await anoncreds.issuer_create_schema(government['did'], city_card['name'], city_card['version'],
+                                             json.dumps(city_card['attributes']))
+    city_card_schema_id = government['city_card_schema_id']
 
-    print("Government -> Send Transcript Schema to Ledger")
-    await send_schema(government['pool'], government['wallet'], government['did'], government['transcript_schema'])
+    print("Government -> Send City Card Schema to Ledger")
+    await send_schema(government['pool'], government['wallet'], government['did'], government['city_card_schema'])
 
     time.sleep(1)  # sleep 1 second before getting schema
 
     print("\n=====================================================================")
     print("=== Carrier A Credential Definition Setup ==")
 
-    print("Carrier A -> Get Transcript Schema from Ledger")
-    (carrier_a['transcript_schema_id'], carrier_a['transcript_schema']) = \
-        await get_schema(carrier_a['pool'], carrier_a['did'], transcript_schema_id)
+    print("Carrier A -> Get City Card Schema from Ledger")
+    (carrier_a['city_card_schema_id'], carrier_a['city_card_schema']) = \
+        await get_schema(carrier_a['pool'], carrier_a['did'], city_card_schema_id)
 
-    print("Carrier A -> Create and store in Wallet Transcript Credential Definition")
-    transcript_cred_def = {
+    print("Carrier A -> Create and store in Wallet City Card Credential Definition")
+    city_card_cred_def = {
         'tag': 'TAG1',
         'type': 'CL',
         'config': {"support_revocation": True}
     }
-    (carrier_a['transcript_cred_def_id'], carrier_a['transcript_cred_def']) = \
+    (carrier_a['city_card_cred_def_id'], carrier_a['city_card_cred_def']) = \
         await anoncreds.issuer_create_and_store_credential_def(carrier_a['wallet'], carrier_a['did'],
-                                                               carrier_a['transcript_schema'], transcript_cred_def['tag'],
-                                                               transcript_cred_def['type'],
-                                                               json.dumps(transcript_cred_def['config']))
+                                                               carrier_a['city_card_schema'], city_card_cred_def['tag'],
+                                                               city_card_cred_def['type'],
+                                                               json.dumps(city_card_cred_def['config']))
 
-    print("Carrier A -> Send  Transcript Credential Definition to Ledger")
-    await send_cred_def(carrier_a['pool'], carrier_a['wallet'], carrier_a['did'], carrier_a['transcript_cred_def'])
+    print("Carrier A -> Send  City Card Credential Definition to Ledger")
+    await send_cred_def(carrier_a['pool'], carrier_a['wallet'], carrier_a['did'], carrier_a['city_card_cred_def'])
 
     print("\n=====================================================================")
     print("=== Carrier A Revocation Registry Setup ==")
@@ -131,7 +132,7 @@ async def run():
     # Convert existing data to variables from test
     issuer_wallet_handle = carrier_a['wallet']
     issuer_did = carrier_a["did"]
-    cred_def_id = carrier_a['transcript_cred_def_id']
+    cred_def_id = carrier_a['city_card_cred_def_id']
     pool_handle = pool_['handle']
 
     #  Issuer Creates Revocation Registry
@@ -160,42 +161,42 @@ async def run():
     # ---------------------------------- EXCHANGING CREDENTIALS ---------------------------------- #
 
     print("\n=====================================================================")
-    print("== Getting Transcript with Carrier A - Getting Transcript Credential ==")
+    print("== Getting City Card with Carrier A - Getting City Card Credential ==")
 
-    # Issuer creates transcript credential
-    print("Carrier A -> Create Transcript Credential Offer for Alice")
-    carrier_a['transcript_cred_offer'] = \
-        await anoncreds.issuer_create_credential_offer(carrier_a['wallet'], carrier_a['transcript_cred_def_id'])
+    # Issuer creates a City Card credential
+    print("Carrier A -> Create City Card Credential Offer for Alice")
+    carrier_a['city_card_cred_offer'] = \
+        await anoncreds.issuer_create_credential_offer(carrier_a['wallet'], carrier_a['city_card_cred_def_id'])
 
-    # Issuer sends transcript credential to prover
-    print("Carrier A -> Send Transcript Credential Offer to Alice")
-    alice['transcript_cred_offer'] = carrier_a['transcript_cred_offer']
-    transcript_cred_offer_object = json.loads(alice['transcript_cred_offer'])
+    # Issuer sends City Card credential to prover
+    print("Carrier A -> Send City Card Credential Offer to Alice")
+    alice['city_card_cred_offer'] = carrier_a['city_card_cred_offer']
+    city_card_cred_offer_object = json.loads(alice['city_card_cred_offer'])
 
-    alice['transcript_schema_id'] = transcript_cred_offer_object['schema_id']
-    alice['transcript_cred_def_id'] = transcript_cred_offer_object['cred_def_id']
+    alice['city_card_schema_id'] = city_card_cred_offer_object['schema_id']
+    alice['city_card_cred_def_id'] = city_card_cred_offer_object['cred_def_id']
 
     # Prover creates and stores master secret in their wallet
     print("Alice -> Create and store Alice Master Secret in Wallet")
     alice['master_secret_id'] = await anoncreds.prover_create_master_secret(alice['wallet'], None)
 
     # Prover gets credential def from Ledger
-    print("Alice -> Get Transcript Credential Definition from Ledger")
-    (alice['transcript_cred_def_id'], alice['transcript_cred_def']) = \
-        await get_cred_def(alice['pool'], alice['did'], alice['transcript_cred_def_id'])
+    print("Alice -> Get City Card Credential Definition from Ledger")
+    (alice['city_card_cred_def_id'], alice['city_card_cred_def']) = \
+        await get_cred_def(alice['pool'], alice['did'], alice['city_card_cred_def_id'])
 
     # Prover creates credential request for Issuer
-    print("Alice -> Create Transcript Credential Request for Carrier A")
-    (alice['transcript_cred_request'], alice['transcript_cred_request_metadata']) = \
+    print("Alice -> Create City Card Credential Request for Carrier A")
+    (alice['city_card_cred_request'], alice['city_card_cred_request_metadata']) = \
         await anoncreds.prover_create_credential_req(alice['wallet'], alice['did'],
-                                                     alice['transcript_cred_offer'], alice['transcript_cred_def'],
+                                                     alice['city_card_cred_offer'], alice['city_card_cred_def'],
                                                      alice['master_secret_id'])
 
     # Prover sends credential request to Issuer
-    print("Alice -> Send Transcript Credential Request to Carrier A")
-    carrier_a['transcript_cred_request'] = alice['transcript_cred_request']
+    print("Alice -> Send City Card Credential Request to Carrier A")
+    carrier_a['city_card_cred_request'] = alice['city_card_cred_request']
 
-    alice['transcript_cred_values'] = json.dumps({
+    alice['city_card_cred_values'] = json.dumps({
         "first_name": {"raw": "Alice", "encoded": "1139481716457488690172217916278103335"},
         "last_name": {"raw": "Garcia", "encoded": "5321642780241790123587902456789123452"},
         "degree": {"raw": "Bachelor of Science, Marketing", "encoded": "12434523576212321"},
@@ -204,18 +205,18 @@ async def run():
         "year": {"raw": "2015", "encoded": "2015"},
         "average": {"raw": "5", "encoded": "5"}
     })
-    carrier_a['alice_transcript_cred_values'] = alice['transcript_cred_values']
+    carrier_a['alice_city_card_cred_values'] = alice['city_card_cred_values']
 
     # Issuer creates credential
-    print("Carrier A -> Create Transcript Credential for Alice")
+    print("Carrier A -> Create City Card Credential for Alice")
 
     tails_reader = \
         await blob_storage.open_reader('default', tails_writer_config)  # Issuer opens tails file reader
 
-    (carrier_a['transcript_cred'], local_cred_id_for_revoc, rev_reg_delta_json) = \
-        await anoncreds.issuer_create_credential(carrier_a['wallet'], carrier_a['transcript_cred_offer'],
-                                                 carrier_a['transcript_cred_request'],
-                                                 carrier_a['alice_transcript_cred_values'],
+    (carrier_a['city_card_cred'], local_cred_id_for_revoc, rev_reg_delta_json) = \
+        await anoncreds.issuer_create_credential(carrier_a['wallet'], carrier_a['city_card_cred_offer'],
+                                                 carrier_a['city_card_cred_request'],
+                                                 carrier_a['alice_city_card_cred_values'],
                                                  rev_reg_id,
                                                  tails_reader)
     # Note that in the above, revocation registry data is passed to issue the credential
@@ -225,29 +226,29 @@ async def run():
     await send_revoc_reg_delta(pool_handle, issuer_wallet_handle, issuer_did, rev_reg_id, rev_reg_delta_json)
 
     # Issuer sends credential to Prover
-    print("Carrier A -> Send Transcript Credential to Alice")
-    alice['transcript_cred'] = carrier_a['transcript_cred']
+    print("Carrier A -> Send City Card Credential to Alice")
+    alice['city_card_cred'] = carrier_a['city_card_cred']
 
     # Prover Gets RevocationRegistryDefinition from Ledger
     print("Alice -> Get revocation registry definition from Ledger")
     prover_did = alice['did']
-    credential = json.loads(alice['transcript_cred'])
+    credential = json.loads(alice['city_card_cred'])
 
     (rev_reg_id, revoc_reg_def_json) = await get_revoc_reg_def(pool_handle, prover_did, credential['rev_reg_id'])
 
     # Prover stores credential and revocation data
     print("Alice -> Store the credential and revocation data")
-    _, alice['transcript_cred_def'] = await get_cred_def(alice['pool'], alice['did'],
-                                                         alice['transcript_cred_def_id'])
+    _, alice['city_card_cred_def'] = await get_cred_def(alice['pool'], alice['did'],
+                                                         alice['city_card_cred_def_id'])
 
     await anoncreds.prover_store_credential(alice['wallet'], None,  # none = cred_id, can be any string I think
-                                            alice['transcript_cred_request_metadata'],
-                                            alice['transcript_cred'], alice['transcript_cred_def'], revoc_reg_def_json)
+                                            alice['city_card_cred_request_metadata'],
+                                            alice['city_card_cred'], alice['city_card_cred_def'], revoc_reg_def_json)
 
     # ---------------------------------- USING THE CREDENTIALS ---------------------------------- #
 
     print("\n=====================================================================")
-    print("== Apply for the job with Carrier B - Transcript proving ==")
+    print("== Apply for the job with Carrier B - City Card proving ==")
 
     print("Carrier B -> Create Job-Application Proof Request")
     nonce = await anoncreds.generate_nonce()
@@ -264,15 +265,15 @@ async def run():
             },
             'attr3_referent': {
                 'name': 'degree',
-                'restrictions': [{'cred_def_id': carrier_a['transcript_cred_def_id']}]
+                'restrictions': [{'cred_def_id': carrier_a['city_card_cred_def_id']}]
             },
             'attr4_referent': {
                 'name': 'status',
-                'restrictions': [{'cred_def_id': carrier_a['transcript_cred_def_id']}]
+                'restrictions': [{'cred_def_id': carrier_a['city_card_cred_def_id']}]
             },
             'attr5_referent': {
                 'name': 'ssn',
-                'restrictions': [{'cred_def_id': carrier_a['transcript_cred_def_id']}]
+                'restrictions': [{'cred_def_id': carrier_a['city_card_cred_def_id']}]
             },
             'attr6_referent': {
                 'name': 'phone_number'
@@ -283,7 +284,7 @@ async def run():
                 'name': 'average',
                 'p_type': '>=',
                 'p_value': 4,
-                'restrictions': [{'cred_def_id': carrier_a['transcript_cred_def_id']}]
+                'restrictions': [{'cred_def_id': carrier_a['city_card_cred_def_id']}]
             }
         }
     })
