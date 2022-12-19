@@ -40,7 +40,7 @@ async def run():
 
     await create_wallet(steward)
 
-    print("ZSovrin Steward -> Create and store in Wallet DID from seed")
+    print("Sovrin Steward -> Create and store in Wallet DID from seed")
     steward['did_info'] = json.dumps({'seed': steward['seed']})
     steward['did'], steward['key'] = await did.create_and_store_my_did(steward['wallet'], steward['did_info'])
 
