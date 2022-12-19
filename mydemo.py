@@ -226,7 +226,7 @@ async def run():
     tails_reader = \
         await blob_storage.open_reader('default', tails_writer_config)  # Issuer opens tails file reader
 
-    (faber['transcript_cred'], cred_rev_id, rev_reg_delta_json) = \
+    (faber['transcript_cred'], local_cred_id_for_revoc, rev_reg_delta_json) = \
         await anoncreds.issuer_create_credential(faber['wallet'], faber['transcript_cred_offer'],
                                                  faber['transcript_cred_request'],
                                                  faber['alice_transcript_cred_values'],
@@ -236,9 +236,7 @@ async def run():
 
     # Issuer Posts Revocation Registry Delta to Ledger
     print("Faber -> Send revocation registry delta to Ledger")
-    revoc_reg_entry_request = \
-        await ledger.build_revoc_reg_entry_request(issuer_did, rev_reg_id, "CL_ACCUM", rev_reg_delta_json)
-    await ledger.sign_and_submit_request(pool_handle, issuer_wallet_handle, issuer_did, revoc_reg_entry_request)
+    await send_revoc_reg_delta(pool_handle, issuer_wallet_handle, issuer_did, rev_reg_id, rev_reg_delta_json)
 
     # Issuer sends credential to Prover
     print("Faber -> Send Transcript Credential to Alice")
@@ -420,7 +418,19 @@ async def run():
                                                  acme['revoc_reg_defs_for_job_application'],
                                                  acme['revoc_regs_for_job_application'])
 
-    # TODO revoke and try verifying
+    print("\n=====================================================================")
+    print("== Revoke credentials ==")
+
+    print("Faber -> Revoke proof")
+    rev_reg_delta_json = await anoncreds.issuer_revoke_credential(issuer_wallet_handle, tails_reader,
+                                                                  rev_reg_id, local_cred_id_for_revoc)
+
+    print("Faber -> Send revocation registry delta to Ledger")
+    await send_revoc_reg_delta(pool_handle, issuer_wallet_handle, issuer_did, rev_reg_id, rev_reg_delta_json)
+
+    print("\n=====================================================================")
+    print("== Prover tries to use revoked credentials ==")
+    # TODO verify again
 
     # ---------------------------------- CLEAN UP ---------------------------------- #
 
@@ -455,7 +465,7 @@ async def run():
 
 # ---------------------------------- HELPER FUNCTIONS ---------------------------------- #
 
-# --------- Request shorthands
+# --------- Request shorthands: basics
 async def send_nym(pool_handle, wallet_handle, _did, new_did, new_key, role):
     nym_request = await ledger.build_nym_request(_did, new_did, new_key, None, role)
     await ledger.sign_and_submit_request(pool_handle, wallet_handle, _did, nym_request)
@@ -483,6 +493,7 @@ async def get_cred_def(pool_handle, _did, cred_def_id):
     return await ledger.parse_get_cred_def_response(get_cred_def_response)
 
 
+# --------- Request shorthands: revocation
 async def get_revoc_reg_def(pool_handle, _did, rev_reg_id):
     get_revoc_reg_def_request = await ledger.build_get_revoc_reg_def_request(_did, rev_reg_id)
     get_revoc_reg_def_response = await ledger.submit_request(pool_handle, get_revoc_reg_def_request)
@@ -504,6 +515,12 @@ async def get_revoc_reg(pool_handle, _did, _rev_reg_id, _timestamp):
     get_revoc_reg_response = await ledger.submit_request(pool_handle, get_revoc_reg_request)
     return await ledger.parse_get_revoc_reg_response(get_revoc_reg_response)
     # Returns (rev_reg_id, rev_reg_json, identifier)
+
+
+async def send_revoc_reg_delta(pool_handle, wallet_handle, _did, _rev_reg_id, _rev_reg_delta_json):
+    revoc_reg_entry_request = \
+        await ledger.build_revoc_reg_entry_request(_did, _rev_reg_id, "CL_ACCUM", _rev_reg_delta_json)
+    await ledger.sign_and_submit_request(pool_handle, wallet_handle, _did, revoc_reg_entry_request)
 
 
 # --------- Misc
