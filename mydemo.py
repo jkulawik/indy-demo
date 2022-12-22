@@ -105,28 +105,31 @@ async def run():
     time.sleep(1)  # sleep 1 second before getting schema
 
     print("\n=====================================================================")
-    print("=== Carrier A Credential Definition Setup ==")
+    print("=== Carrier Credential Definition Setup ==")
 
-    print("Carrier A -> Get City Card Schema from Ledger")
-    (carrier_a['cc_schema_id'], carrier_a['cc_schema']) = \
-        await get_schema(carrier_a['pool'],
-                         carrier_a['did'],
-                         cc_schema_id)  # Carrier must know schema ID beforehand
+    carriers = [carrier_a, carrier_b]
 
-    print("Carrier A -> Create and store City Card Credential Definition in Wallet")
-    cc_cred_def = {
-        'tag': 'TAG1',
-        'type': 'CL',
-        'config': {"support_revocation": True}
-    }
-    (carrier_a['cc_cred_def_id'], carrier_a['cc_cred_def']) = \
-        await anoncreds.issuer_create_and_store_credential_def(carrier_a['wallet'], carrier_a['did'],
-                                                               carrier_a['cc_schema'], cc_cred_def['tag'],
-                                                               cc_cred_def['type'],
-                                                               json.dumps(cc_cred_def['config']))
+    for carrier in carriers:
+        print("{} -> Get City Card Schema from Ledger".format(carrier['name']))
+        (carrier['cc_schema_id'], carrier['cc_schema']) = \
+            await get_schema(carrier['pool'],
+                             carrier['did'],
+                             cc_schema_id)  # Carrier must know schema ID beforehand
 
-    print("Carrier A -> Send  City Card Credential Definition to Ledger")
-    await send_cred_def(carrier_a['pool'], carrier_a['wallet'], carrier_a['did'], carrier_a['cc_cred_def'])
+        print("{} -> Create and store City Card Credential Definition in Wallet".format(carrier['name']))
+        cc_cred_def = {
+            'tag': 'TAG1',
+            'type': 'CL',
+            'config': {"support_revocation": True}
+        }
+        (carrier['cc_cred_def_id'], carrier['cc_cred_def']) = \
+            await anoncreds.issuer_create_and_store_credential_def(carrier['wallet'], carrier['did'],
+                                                                   carrier['cc_schema'], cc_cred_def['tag'],
+                                                                   cc_cred_def['type'],
+                                                                   json.dumps(cc_cred_def['config']))
+
+        print("{} -> Send  City Card Credential Definition to Ledger".format(carrier['name']))
+        await send_cred_def(carrier['pool'], carrier['wallet'], carrier['did'], carrier['cc_cred_def'])
 
     print("\n=====================================================================")
     print("=== Carrier A Revocation Registry Setup ==")
@@ -259,7 +262,6 @@ async def run():
 
     print("Carrier B -> Create Ticket Check Proof Request")
     nonce = await anoncreds.generate_nonce()
-    current_time = get_current_time()
     carrier_b['ticket_check_proof_request'] = json.dumps({
         'nonce': nonce,
         'name': 'Ticket Check',
@@ -273,15 +275,15 @@ async def run():
             },
             'attr3_referent': {
                 'name': 'degree',
-                'restrictions': [{'cred_def_id': carrier_a['cc_cred_def_id']}]
+                'restrictions': [{'cred_def_id': carrier_a['cc_cred_def_id']}, {'cred_def_id': carrier_b['cc_cred_def_id']}]
             },
             'attr4_referent': {
                 'name': 'status',
-                'restrictions': [{'cred_def_id': carrier_a['cc_cred_def_id']}]
+                'restrictions': [{'cred_def_id': carrier_a['cc_cred_def_id']}, {'cred_def_id': carrier_b['cc_cred_def_id']}]
             },
             'attr5_referent': {
                 'name': 'ssn',
-                'restrictions': [{'cred_def_id': carrier_a['cc_cred_def_id']}]
+                'restrictions': [{'cred_def_id': carrier_a['cc_cred_def_id']}, {'cred_def_id': carrier_b['cc_cred_def_id']}]
             },
             'attr6_referent': {
                 'name': 'phone_number'
@@ -295,7 +297,6 @@ async def run():
                 'restrictions': [{'cred_def_id': carrier_a['cc_cred_def_id']}]
             }
         },
-        # 'non_revoked': {'to': current_time}  # todo might not be required
     })
 
     print("Carrier B -> Send Ticket Check Proof Request to Alice")
@@ -355,7 +356,7 @@ async def run():
         },
         'requested_predicates': {
             'predicate1_referent': {'cred_id': cred_for_predicate1['referent'],
-                                    'timestamp': timestamps[cred_for_attr4['referent']]}
+                                    'timestamp': timestamps[cred_for_predicate1['referent']]}
         }
     })
 
@@ -395,15 +396,141 @@ async def run():
     # assert 'Garcia' == ticket_check_proof_object['requested_proof']['self_attested_attrs']['attr2_referent']
     # assert '123-45-6789' == ticket_check_proof_object['requested_proof']['self_attested_attrs']['attr6_referent']
 
-    assert await anoncreds.verifier_verify_proof(carrier_b['ticket_check_proof_request'],
-                                                 carrier_b['ticket_check_proof'],
-                                                 carrier_b['schemas_for_job_application'],
-                                                 carrier_b['cred_defs_for_job_application'],
-                                                 carrier_b['revoc_reg_defs_for_job_application'],
-                                                 carrier_b['revoc_regs_for_job_application'])
+    ticket_validity = await anoncreds.verifier_verify_proof(carrier_b['ticket_check_proof_request'],
+                                                            carrier_b['ticket_check_proof'],
+                                                            carrier_b['schemas_for_job_application'],
+                                                            carrier_b['cred_defs_for_job_application'],
+                                                            carrier_b['revoc_reg_defs_for_job_application'],
+                                                            carrier_b['revoc_regs_for_job_application'])
+    print("Ticket validity:", ticket_validity)
+    assert ticket_validity is True
 
     print("\n=====================================================================")
-    print("== Revoke credentials ==")
+    print("== Alice tries to use a Carrier 2 exclusive service ==")
+
+    carrier_b['ex_ticket_check_proof_request'] = json.dumps({
+        'nonce': nonce,
+        'name': 'Exclusive Ticket Check',
+        'version': '0.1',
+        'requested_attributes': {
+            'attr1_referent': {
+                'name': 'first_name'
+            },
+            'attr2_referent': {
+                'name': 'last_name'
+            },
+            'attr3_referent': {
+                'name': 'degree',
+                'restrictions': [{'cred_def_id': carrier_b['cc_cred_def_id']}]
+            },
+            'attr4_referent': {
+                'name': 'status',
+                'restrictions': [{'cred_def_id': carrier_b['cc_cred_def_id']}]
+            },
+            'attr5_referent': {
+                'name': 'ssn',
+                'restrictions': [{'cred_def_id': carrier_b['cc_cred_def_id']}]
+            },
+            'attr6_referent': {
+                'name': 'phone_number'
+            }
+        },
+        'requested_predicates': {
+            'predicate1_referent': {
+                'name': 'average',
+                'p_type': '>=',
+                'p_value': 4,
+                'restrictions': [{'cred_def_id': carrier_b['cc_cred_def_id']}]
+            }
+        },
+    })
+
+    print("Carrier B -> Send Exclusive Ticket Check Proof Request to Alice")
+    alice['ex_ticket_check_proof_request'] = carrier_b['ex_ticket_check_proof_request']
+
+    print("Alice -> Get credentials for Exclusive Ticket Check Proof Request")
+    search_handle = \
+        await anoncreds.prover_search_credentials_for_proof_req(alice['wallet'],
+                                                                alice['ex_ticket_check_proof_request'], None)
+
+    # get_credential_for_referent = prover_fetch_credentials_for_proof_req
+    ex_cred_for_attr1 = await get_credential_for_referent(search_handle, 'attr1_referent')
+    ex_cred_for_attr2 = await get_credential_for_referent(search_handle, 'attr2_referent')
+    ex_cred_for_attr3 = await get_credential_for_referent(search_handle, 'attr3_referent')
+    ex_cred_for_attr4 = await get_credential_for_referent(search_handle, 'attr4_referent')
+    ex_cred_for_attr5 = await get_credential_for_referent(search_handle, 'attr5_referent')
+    ex_cred_for_predicate1 = await get_credential_for_referent(search_handle, 'predicate1_referent')
+
+    await anoncreds.prover_close_credentials_search_for_proof_req(search_handle)
+
+    print("Found credential for attribute 1?", 'referent' in ex_cred_for_attr1)
+    print("Found credential for attribute 2?", 'referent' in ex_cred_for_attr2)
+    print("Found credential for attribute 3?", 'referent' in ex_cred_for_attr3)
+    print("Found credential for attribute 4?", 'referent' in ex_cred_for_attr4)
+    print("Found credential for attribute 5?", 'referent' in ex_cred_for_attr5)
+    print("Found credential for predicate 1?", 'referent' in ex_cred_for_predicate1)
+    # 1,2 and 6 are found because they have no restrictions
+    print("Alice -> Can't find matching credentials. Attempt to use card from Carrier A anyway")
+
+    alice['creds_for_ex_ticket_check_proof'] = {ex_cred_for_attr1['referent']: ex_cred_for_attr1}
+
+    request_time = get_current_time()
+    alice['schemas'], alice['cred_defs'], alice['revoc_states'], timestamps = \
+        await prover_get_entities_from_ledger(alice['pool'], alice['did'],
+                                              alice['creds_for_ex_ticket_check_proof'], alice['name'],
+                                              _from_time=alice['last_revoc_update'],
+                                              _to_time=request_time,
+                                              _tails_reader=tails_reader)
+    alice['last_revoc_update'] = request_time
+
+    print("Alice -> Create Ticket Check Proof")
+    alice['ex_ticket_check_requested_creds'] = json.dumps({
+        'self_attested_attributes': {
+            'attr1_referent': 'Alice',
+            'attr2_referent': 'Garcia',
+            'attr6_referent': '123-45-6789'
+        },
+        'requested_attributes': {
+            'attr3_referent': {'cred_id': ex_cred_for_attr1['referent'],
+                               'revealed': True, 'timestamp': timestamps[ex_cred_for_attr1['referent']]},
+            'attr4_referent': {'cred_id': ex_cred_for_attr1['referent'], 'revealed': True,
+                               'timestamp': timestamps[ex_cred_for_attr1['referent']]},
+            'attr5_referent': {'cred_id': ex_cred_for_attr1['referent'], 'revealed': True,
+                               'timestamp': timestamps[ex_cred_for_attr1['referent']]},
+        },
+        'requested_predicates': {
+            'predicate1_referent': {'cred_id': ex_cred_for_attr1['referent'],
+                                    'timestamp': timestamps[ex_cred_for_attr1['referent']]}
+        }
+    })
+
+    alice['ex_ticket_check_proof'] = \
+        await anoncreds.prover_create_proof(alice['wallet'], alice['ex_ticket_check_proof_request'],
+                                            alice['ex_ticket_check_requested_creds'], alice['master_secret_id'],
+                                            alice['schemas'], alice['cred_defs'], alice['revoc_states'])
+
+    print("Alice -> Send Exclusive Ticket Check Proof to Carrier B")
+    carrier_b['ex_ticket_check_proof'] = alice['ex_ticket_check_proof']
+    ex_ticket_check_proof_object = json.loads(carrier_b['ex_ticket_check_proof'])
+
+    carrier_b['schemas_for_job_application'], carrier_b['cred_defs_for_job_application'], \
+        carrier_b['revoc_reg_defs_for_job_application'], carrier_b['revoc_regs_for_job_application'] = \
+        await verifier_get_entities_from_ledger(carrier_b['pool'], carrier_b['did'],
+                                                ex_ticket_check_proof_object['identifiers'], carrier_b['name'])
+
+    print("Carrier B -> Verify Exclusive Ticket Check Proof from Alice")
+    try:
+        ticket_validity = await anoncreds.verifier_verify_proof(carrier_b['ex_ticket_check_proof_request'],
+                                                                carrier_b['ex_ticket_check_proof'],
+                                                                carrier_b['schemas_for_job_application'],
+                                                                carrier_b['cred_defs_for_job_application'],
+                                                                carrier_b['revoc_reg_defs_for_job_application'],
+                                                                carrier_b['revoc_regs_for_job_application'])
+    except IndyError as ex:
+        print("Exception occured:", errorcode_to_exception(ex.error_code))
+
+    print("\n=====================================================================")
+    print("== Carrier A revokes Alice's car ==")
 
     print("Carrier A -> Revoke proof")
     rev_reg_delta_json = await anoncreds.issuer_revoke_credential(carrier_a['wallet'], tails_reader,
@@ -415,9 +542,8 @@ async def run():
                                carrier_a['rev_reg_id'], rev_reg_delta_json)
 
     print("\n=====================================================================")
-    print("== Prover tries to use revoked credentials ==")
+    print("== Alice tries to use revoked card ==")
     time.sleep(1)
-    # TODO verify again
 
     # the proof request is the same, so alice uses her cached credential search results
     # to make new proof (alice['creds_for_ticket_check_proof'])
@@ -451,7 +577,7 @@ async def run():
         },
         'requested_predicates': {
             'predicate1_referent': {'cred_id': cred_for_predicate1['referent'],
-                                    'timestamp': timestamps[cred_for_attr4['referent']]}
+                                    'timestamp': timestamps[cred_for_predicate1['referent']]}
         }
     })
 
@@ -477,6 +603,7 @@ async def run():
                                                             carrier_b['revoc_reg_defs_for_job_application'],
                                                             carrier_b['revoc_regs_for_job_application'])
     print("Ticket validity:", ticket_validity)
+    assert ticket_validity is False
 
     # ---------------------------------- CLEAN UP ---------------------------------- #
 
@@ -600,6 +727,8 @@ async def create_wallet_and_register_verinym(_steward, recipient):
 async def get_credential_for_referent(_search_handle, referent):
     credentials = json.loads(
         await anoncreds.prover_fetch_credentials_for_proof_req(_search_handle, referent, 10))
+    if len(credentials) == 0:
+        return {}
     return credentials[0]['cred_info']
 
 
