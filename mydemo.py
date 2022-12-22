@@ -547,6 +547,11 @@ def get_current_time() -> int:
     return int(time.time())
 
 
+def encode(_input: str) -> int:
+    byte_str = _input.encode('utf-8')
+    return int.from_bytes(byte_str, byteorder='big')
+
+
 # ---------  Mass get data from ledger
 
 async def prover_get_entities_from_ledger(pool_handle, _did, identifiers, actor,
