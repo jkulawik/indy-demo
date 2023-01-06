@@ -68,6 +68,15 @@ async def run():
     }
     await create_wallet_and_register_verinym(steward, carrier_b)
 
+    university = {
+        'name': 'Warsaw University of Technology',
+        'wallet_config': json.dumps({'id': 'university_wallet'}),
+        'wallet_credentials': json.dumps({'key': 'university_wallet_key'}),
+        'pool': pool_['handle'],
+        'role': 'ENDORSER'
+    }
+    await create_wallet_and_register_verinym(steward, university)
+
     print("\n=====================================================================")
     print("== Alice setup ==")
 
@@ -103,6 +112,21 @@ async def run():
     print("Government -> Send City Card Schema to Ledger")
     await send_schema(government['pool'], government['wallet'], government['did'], government['cc_schema'])
 
+    print("Government -> Create Student Card Schema")
+    student_card = {
+        'name': 'Student Card',
+        'version': '1.0',
+        'attributes': ['first_name', 'last_name', 'album_number']
+    }
+
+    (government['sc_schema_id'], government['sc_schema']) = \
+        await anoncreds.issuer_create_schema(government['did'], student_card['name'], student_card['version'],
+                                             json.dumps(student_card['attributes']))
+    sc_schema_id = government['sc_schema_id']
+
+    print("Government -> Send Student Card Schema to Ledger")
+    await send_schema(government['pool'], government['wallet'], government['did'], government['sc_schema'])
+
     time.sleep(1)  # sleep 1 second before getting schema
 
     print("\n=====================================================================")
@@ -132,6 +156,27 @@ async def run():
         print("{} -> Send  City Card Credential Definition to Ledger".format(carrier['name']))
         await send_cred_def(carrier['pool'], carrier['wallet'], carrier['did'], carrier['cc_cred_def'])
 
+    print("{} -> Get Student Card Schema from Ledger".format(university['name']))
+    (university['sc_schema_id'], university['sc_schema']) = \
+        await get_schema(university['pool'],
+                         university['did'],
+                         sc_schema_id)  # Carrier must know schema ID beforehand
+
+    print("{} -> Create and store Student Card Credential Definition in Wallet".format(university['name']))
+    sc_cred_def = {
+        'tag': 'TAG1',
+        'type': 'CL',
+        'config': {"support_revocation": True}
+    }
+    (university['sc_cred_def_id'], university['sc_cred_def']) = \
+        await anoncreds.issuer_create_and_store_credential_def(university['wallet'], university['did'],
+                                                               university['sc_schema'], sc_cred_def['tag'],
+                                                               sc_cred_def['type'],
+                                                               json.dumps(sc_cred_def['config']))
+
+    print("{} -> Send  City Card Credential Definition to Ledger".format(university['name']))
+    await send_cred_def(university['pool'], university['wallet'], university['did'], university['sc_cred_def'])
+
     print("\n=====================================================================")
     print("=== Carrier A Revocation Registry Setup ==")
 
@@ -160,6 +205,7 @@ async def run():
                                          carrier_a['did'], revoc_reg_entry_request)
 
     time.sleep(1)  # sleep 1 second before using the freshly created revocable creds
+
     # ---------------------------------- EXCHANGING CREDENTIALS ---------------------------------- #
 
     print("\n=====================================================================")
