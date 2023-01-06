@@ -91,9 +91,10 @@ async def run():
     city_card = {
         'name': 'City Card',
         'version': '1.0',
-        'attributes': ['first_name', 'last_name', 'degree', 'status', 'year', 'average', 'ssn']
+        'attributes': ['first_name', 'last_name', 'city', 'half_price', 'max_zone']
     }
     # 'attributes': ['first_name', 'last_name', 'city', 'half_price', 'max_zone']
+    # 'attributes': ['first_name', 'last_name', 'degree', 'status', 'year', 'average', 'ssn']
     (government['cc_schema_id'], government['cc_schema']) = \
         await anoncreds.issuer_create_schema(government['did'], city_card['name'], city_card['version'],
                                              json.dumps(city_card['attributes']))
@@ -198,22 +199,22 @@ async def run():
     carrier_a['cc_cred_request'] = alice['cc_cred_request']
 
     print("Alice -> Fill her data and send to Carrier A")
-    alice['cc_cred_values'] = json.dumps({
-        "first_name": {"raw": "Alice", "encoded": "1139481716457488690172217916278103335"},
-        "last_name": {"raw": "Garcia", "encoded": "5321642780241790123587902456789123452"},
-        "degree": {"raw": "Bachelor of Science, Marketing", "encoded": "12434523576212321"},
-        "status": {"raw": "graduated", "encoded": "2213454313412354"},
-        "ssn": {"raw": "123-45-6789", "encoded": "3124141231422543541"},
-        "year": {"raw": "2015", "encoded": "2015"},
-        "average": {"raw": "5", "encoded": "5"}
-    })
     # alice['cc_cred_values'] = json.dumps({
-    #     "first_name": {"raw": "Alice", "encoded": encode('Alice')},
-    #     "last_name": {"raw": "Garcia", "encoded": encode('Garcia')},
-    #     "city": {"raw": "Warsaw", "encoded": encode('Warsaw')},
-    #     "half_price": {"raw": "false", "encoded": encode('false')},
-    #     "max_zone": {"raw": "1", "encoded": "1"},
+    #     "first_name": {"raw": "Alice", "encoded": "1139481716457488690172217916278103335"},
+    #     "last_name": {"raw": "Garcia", "encoded": "5321642780241790123587902456789123452"},
+    #     "degree": {"raw": "Bachelor of Science, Marketing", "encoded": "12434523576212321"},
+    #     "status": {"raw": "graduated", "encoded": "2213454313412354"},
+    #     "ssn": {"raw": "123-45-6789", "encoded": "3124141231422543541"},
+    #     "year": {"raw": "2015", "encoded": "2015"},
+    #     "average": {"raw": "5", "encoded": "5"}
     # })
+    alice['cc_cred_values'] = json.dumps({
+        "first_name": {"raw": "Alice", "encoded": encode('Alice')},
+        "last_name": {"raw": "Garcia", "encoded": encode('Garcia')},
+        "city": {"raw": "Warsaw", "encoded": encode('Warsaw')},
+        "half_price": {"raw": "false", "encoded": encode('false')},
+        "max_zone": {"raw": "2", "encoded": "2"},
+    })
     carrier_a['alice_cc_cred_values'] = alice['cc_cred_values']
 
     # Issuer creates credential
@@ -274,27 +275,20 @@ async def run():
                 'name': 'last_name'
             },
             'attr3_referent': {
-                'name': 'degree',
+                'name': 'city',
                 'restrictions': [{'cred_def_id': carrier_a['cc_cred_def_id']}, {'cred_def_id': carrier_b['cc_cred_def_id']}]
             },
             'attr4_referent': {
-                'name': 'status',
+                'name': 'half_price',
                 'restrictions': [{'cred_def_id': carrier_a['cc_cred_def_id']}, {'cred_def_id': carrier_b['cc_cred_def_id']}]
             },
-            'attr5_referent': {
-                'name': 'ssn',
-                'restrictions': [{'cred_def_id': carrier_a['cc_cred_def_id']}, {'cred_def_id': carrier_b['cc_cred_def_id']}]
-            },
-            'attr6_referent': {
-                'name': 'phone_number'
-            }
         },
         'requested_predicates': {
             'predicate1_referent': {
-                'name': 'average',
+                'name': 'max_zone',
                 'p_type': '>=',
-                'p_value': 4,
-                'restrictions': [{'cred_def_id': carrier_a['cc_cred_def_id']}]
+                'p_value': 2,
+                'restrictions': [{'cred_def_id': carrier_a['cc_cred_def_id']}, {'cred_def_id': carrier_b['cc_cred_def_id']}]
             }
         },
     })
@@ -312,8 +306,12 @@ async def run():
     cred_for_attr2 = await get_credential_for_referent(search_handle, 'attr2_referent')
     cred_for_attr3 = await get_credential_for_referent(search_handle, 'attr3_referent')
     cred_for_attr4 = await get_credential_for_referent(search_handle, 'attr4_referent')
-    cred_for_attr5 = await get_credential_for_referent(search_handle, 'attr5_referent')
     cred_for_predicate1 = await get_credential_for_referent(search_handle, 'predicate1_referent')
+
+    creds = [cred_for_attr1, cred_for_attr2, cred_for_attr3, cred_for_attr4, cred_for_predicate1]
+    for cred in creds:
+        print("[i] Credentials from search")
+        print(cred)
 
     await anoncreds.prover_close_credentials_search_for_proof_req(search_handle)
 
@@ -321,7 +319,6 @@ async def run():
                                              cred_for_attr2['referent']: cred_for_attr2,
                                              cred_for_attr3['referent']: cred_for_attr3,
                                              cred_for_attr4['referent']: cred_for_attr4,
-                                             cred_for_attr5['referent']: cred_for_attr5,
                                              cred_for_predicate1['referent']: cred_for_predicate1}
     # NOTE: the search returns the same cred (referent) each time, so this dict has one entry that's
     # being readded and is presumably automatically skipped
@@ -344,15 +341,12 @@ async def run():
         'self_attested_attributes': {
             'attr1_referent': 'Alice',
             'attr2_referent': 'Garcia',
-            'attr6_referent': '123-45-6789'
         },
         'requested_attributes': {
             'attr3_referent': {'cred_id': cred_for_attr3['referent'],
                                'revealed': True, 'timestamp': timestamps[cred_for_attr3['referent']]},
             'attr4_referent': {'cred_id': cred_for_attr4['referent'], 'revealed': True,
                                'timestamp': timestamps[cred_for_attr4['referent']]},
-            'attr5_referent': {'cred_id': cred_for_attr5['referent'], 'revealed': True,
-                               'timestamp': timestamps[cred_for_attr5['referent']]},
         },
         'requested_predicates': {
             'predicate1_referent': {'cred_id': cred_for_predicate1['referent'],
@@ -410,7 +404,7 @@ async def run():
 
     carrier_b['ex_ticket_check_proof_request'] = json.dumps({
         'nonce': nonce,
-        'name': 'Exclusive Ticket Check',
+        'name': 'Ticket Check',
         'version': '0.1',
         'requested_attributes': {
             'attr1_referent': {
@@ -420,27 +414,20 @@ async def run():
                 'name': 'last_name'
             },
             'attr3_referent': {
-                'name': 'degree',
-                'restrictions': [{'cred_def_id': carrier_b['cc_cred_def_id']}]
+                'name': 'city',
+                'restrictions': [{'cred_def_id': carrier_a['cc_cred_def_id']}, {'cred_def_id': carrier_b['cc_cred_def_id']}]
             },
             'attr4_referent': {
-                'name': 'status',
-                'restrictions': [{'cred_def_id': carrier_b['cc_cred_def_id']}]
+                'name': 'half_price',
+                'restrictions': [{'cred_def_id': carrier_a['cc_cred_def_id']}, {'cred_def_id': carrier_b['cc_cred_def_id']}]
             },
-            'attr5_referent': {
-                'name': 'ssn',
-                'restrictions': [{'cred_def_id': carrier_b['cc_cred_def_id']}]
-            },
-            'attr6_referent': {
-                'name': 'phone_number'
-            }
         },
         'requested_predicates': {
             'predicate1_referent': {
-                'name': 'average',
+                'name': 'max_zone',
                 'p_type': '>=',
-                'p_value': 4,
-                'restrictions': [{'cred_def_id': carrier_b['cc_cred_def_id']}]
+                'p_value': 2,
+                'restrictions': [{'cred_def_id': carrier_a['cc_cred_def_id']}, {'cred_def_id': carrier_b['cc_cred_def_id']}]
             }
         },
     })
@@ -458,7 +445,6 @@ async def run():
     ex_cred_for_attr2 = await get_credential_for_referent(search_handle, 'attr2_referent')
     ex_cred_for_attr3 = await get_credential_for_referent(search_handle, 'attr3_referent')
     ex_cred_for_attr4 = await get_credential_for_referent(search_handle, 'attr4_referent')
-    ex_cred_for_attr5 = await get_credential_for_referent(search_handle, 'attr5_referent')
     ex_cred_for_predicate1 = await get_credential_for_referent(search_handle, 'predicate1_referent')
 
     await anoncreds.prover_close_credentials_search_for_proof_req(search_handle)
@@ -467,7 +453,6 @@ async def run():
     print("Found credential for attribute 2?", 'referent' in ex_cred_for_attr2)
     print("Found credential for attribute 3?", 'referent' in ex_cred_for_attr3)
     print("Found credential for attribute 4?", 'referent' in ex_cred_for_attr4)
-    print("Found credential for attribute 5?", 'referent' in ex_cred_for_attr5)
     print("Found credential for predicate 1?", 'referent' in ex_cred_for_predicate1)
     # 1,2 and 6 are found because they have no restrictions
     print("Alice -> Can't find matching credentials. Attempt to use card from Carrier A anyway")
@@ -488,14 +473,11 @@ async def run():
         'self_attested_attributes': {
             'attr1_referent': 'Alice',
             'attr2_referent': 'Garcia',
-            'attr6_referent': '123-45-6789'
         },
         'requested_attributes': {
             'attr3_referent': {'cred_id': ex_cred_for_attr1['referent'],
                                'revealed': True, 'timestamp': timestamps[ex_cred_for_attr1['referent']]},
             'attr4_referent': {'cred_id': ex_cred_for_attr1['referent'], 'revealed': True,
-                               'timestamp': timestamps[ex_cred_for_attr1['referent']]},
-            'attr5_referent': {'cred_id': ex_cred_for_attr1['referent'], 'revealed': True,
                                'timestamp': timestamps[ex_cred_for_attr1['referent']]},
         },
         'requested_predicates': {
@@ -530,7 +512,7 @@ async def run():
         print("Exception occured:", errorcode_to_exception(ex.error_code))
 
     print("\n=====================================================================")
-    print("== Carrier A revokes Alice's car ==")
+    print("== Carrier A revokes Alice's card ==")
 
     print("Carrier A -> Revoke proof")
     rev_reg_delta_json = await anoncreds.issuer_revoke_credential(carrier_a['wallet'], tails_reader,
@@ -565,15 +547,12 @@ async def run():
         'self_attested_attributes': {
             'attr1_referent': 'Alice',
             'attr2_referent': 'Garcia',
-            'attr6_referent': '123-45-6789'
         },
         'requested_attributes': {
             'attr3_referent': {'cred_id': cred_for_attr3['referent'],
                                'revealed': True, 'timestamp': timestamps[cred_for_attr3['referent']]},
             'attr4_referent': {'cred_id': cred_for_attr4['referent'], 'revealed': True,
                                'timestamp': timestamps[cred_for_attr4['referent']]},
-            'attr5_referent': {'cred_id': cred_for_attr5['referent'], 'revealed': True,
-                               'timestamp': timestamps[cred_for_attr5['referent']]},
         },
         'requested_predicates': {
             'predicate1_referent': {'cred_id': cred_for_predicate1['referent'],
@@ -736,9 +715,9 @@ def get_current_time() -> int:
     return int(time.time())
 
 
-def encode(_input: str) -> int:
+def encode(_input: str) -> str:
     byte_str = _input.encode('utf-8')
-    return int.from_bytes(byte_str, byteorder='big')
+    return str(int.from_bytes(byte_str, byteorder='big'))
 
 
 # ---------  Mass get data from ledger
