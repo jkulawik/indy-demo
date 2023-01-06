@@ -156,6 +156,9 @@ async def run():
         print("{} -> Send  City Card Credential Definition to Ledger".format(carrier['name']))
         await send_cred_def(carrier['pool'], carrier['wallet'], carrier['did'], carrier['cc_cred_def'])
 
+    print("\n=====================================================================")
+    print("=== University  Credential Definition Setup ==")
+
     print("{} -> Get Student Card Schema from Ledger".format(university['name']))
     (university['sc_schema_id'], university['sc_schema']) = \
         await get_schema(university['pool'],
@@ -204,8 +207,30 @@ async def run():
     await ledger.sign_and_submit_request(carrier_a['pool'], carrier_a['wallet'],
                                          carrier_a['did'], revoc_reg_entry_request)
 
-    time.sleep(1)  # sleep 1 second before using the freshly created revocable creds
+    print("\n=====================================================================")
+    print("=== University Revocation Registry Setup ==")
 
+    #  Issuer Creates Revocation Registry
+    print("University -> Create revocation registry")
+    (university['rev_reg_id'], rev_reg_def_json, rev_reg_entry_json) = \
+        await anoncreds.issuer_create_and_store_revoc_reg(university['wallet'], university['did'], None, 'tag1',
+                                                          university['sc_cred_def_id'],
+                                                          '{"max_cred_num": 5, "issuance_type":"ISSUANCE_ON_DEMAND"}',
+                                                          tails_writer)
+
+    # Issuer posts Revocation Registry Definition to Ledger
+    print("University -> Send Revocation Registry Definition to Ledger")
+    revoc_reg_request = await ledger.build_revoc_reg_def_request(university['did'], rev_reg_def_json)
+    await ledger.sign_and_submit_request(university['pool'], university['wallet'], university['did'], revoc_reg_request)
+
+    # Issuer posts Revocation Registry Entry to Ledger
+    print("University -> send Revocation Registry Entry to Ledger")
+    revoc_reg_entry_request = await ledger.build_revoc_reg_entry_request(university['did'], university['rev_reg_id'],
+                                                                         "CL_ACCUM", rev_reg_entry_json)
+    await ledger.sign_and_submit_request(university['pool'], university['wallet'],
+                                         university['did'], revoc_reg_entry_request)
+
+    time.sleep(1)  # sleep 1 second before using the freshly created revocable creds
     # ---------------------------------- EXCHANGING CREDENTIALS ---------------------------------- #
 
     print("\n=====================================================================")
@@ -216,7 +241,7 @@ async def run():
     carrier_a['cc_cred_offer'] = \
         await anoncreds.issuer_create_credential_offer(carrier_a['wallet'], carrier_a['cc_cred_def_id'])
 
-    # Issuer sends City Card credential to prover
+    # Issuer sends City Card credential offer to prover
     print("Carrier A -> Send City Card Credential Offer to Alice")
     alice['cc_cred_offer'] = carrier_a['cc_cred_offer']
     cc_cred_offer_object = json.loads(alice['cc_cred_offer'])
@@ -244,24 +269,14 @@ async def run():
     print("Alice -> Send City Card Credential Request to Carrier A")
     carrier_a['cc_cred_request'] = alice['cc_cred_request']
 
-    print("Alice -> Fill her data and send to Carrier A")
-    # alice['cc_cred_values'] = json.dumps({
-    #     "first_name": {"raw": "Alice", "encoded": "1139481716457488690172217916278103335"},
-    #     "last_name": {"raw": "Garcia", "encoded": "5321642780241790123587902456789123452"},
-    #     "degree": {"raw": "Bachelor of Science, Marketing", "encoded": "12434523576212321"},
-    #     "status": {"raw": "graduated", "encoded": "2213454313412354"},
-    #     "ssn": {"raw": "123-45-6789", "encoded": "3124141231422543541"},
-    #     "year": {"raw": "2015", "encoded": "2015"},
-    #     "average": {"raw": "5", "encoded": "5"}
-    # })
-    alice['cc_cred_values'] = json.dumps({
+    print("Carrier A -> Fill Alice's data for the credential")
+    carrier_a['alice_cc_cred_values'] = json.dumps({
         "first_name": {"raw": "Alice", "encoded": encode('Alice')},
         "last_name": {"raw": "Garcia", "encoded": encode('Garcia')},
         "city": {"raw": "Warsaw", "encoded": encode('Warsaw')},
         "half_price": {"raw": "false", "encoded": encode('false')},
         "max_zone": {"raw": "2", "encoded": "2"},
     })
-    carrier_a['alice_cc_cred_values'] = alice['cc_cred_values']
 
     # Issuer creates credential
     print("Carrier A -> Create City Card Credential for Alice")
@@ -291,7 +306,7 @@ async def run():
     prover_did = alice['did']
     credential = json.loads(alice['cc_cred'])
 
-    (alice['rev_reg_id'], revoc_reg_def_json) = \
+    (rev_reg_id, revoc_reg_def_json) = \
         await get_revoc_reg_def(alice['pool'], prover_did, credential['rev_reg_id'])
 
     # Prover stores credential and revocation data
@@ -302,12 +317,88 @@ async def run():
                                             alice['cc_cred_request_metadata'],
                                             alice['cc_cred'], alice['cc_cred_def'], revoc_reg_def_json)
 
+    print("\n=====================================================================")
+    print("== Alice gets a Student Card credential from her university ==")
+
+    # Issuer creates a City Card credential
+    print("University -> Create Student Card Credential Offer for Alice")
+    university['sc_cred_offer'] = \
+        await anoncreds.issuer_create_credential_offer(university['wallet'], university['sc_cred_def_id'])
+
+    # Issuer sends Student Card credential offer to prover
+    print("University -> Send Student Card Credential Offer to Alice")
+    alice['sc_cred_offer'] = university['sc_cred_offer']
+    sc_cred_offer_object = json.loads(alice['sc_cred_offer'])
+
+    alice['sc_schema_id'] = sc_cred_offer_object['schema_id']
+    alice['sc_cred_def_id'] = sc_cred_offer_object['cred_def_id']
+
+    # Prover gets credential def from Ledger
+    print("Alice -> Get Student Card Credential Definition from Ledger")
+    (alice['sc_cred_def_id'], alice['sc_cred_def']) = \
+        await get_cred_def(alice['pool'], alice['did'], alice['sc_cred_def_id'])
+
+    # Prover creates credential request for Issuer
+    print("Alice -> Create Student Card Credential Request for University")
+    (alice['sc_cred_request'], alice['sc_cred_request_metadata']) = \
+        await anoncreds.prover_create_credential_req(alice['wallet'], alice['did'],
+                                                     alice['sc_cred_offer'], alice['sc_cred_def'],
+                                                     alice['master_secret_id'])
+
+    # Prover sends credential request to Issuer
+    print("Alice -> Send Student Card Credential Request to University")
+    university['sc_cred_request'] = alice['sc_cred_request']
+
+    print("University -> Fill Alice's data for the credential")
+    university['alice_sc_cred_values'] = json.dumps({
+        "first_name": {"raw": "Alice", "encoded": encode('Alice')},
+        "last_name": {"raw": "Garcia", "encoded": encode('Garcia')},
+        "album_number": {"raw": "123456", "encoded": "123456"},
+    })
+
+    # Issuer creates credential
+    print("University -> Create Student Card Credential for Alice")
+
+    (university['sc_cred'], university['alice_cred_revoc_id'], rev_reg_delta_json) = \
+        await anoncreds.issuer_create_credential(university['wallet'], university['sc_cred_offer'],
+                                                 university['sc_cred_request'],
+                                                 university['alice_sc_cred_values'],
+                                                 university['rev_reg_id'],
+                                                 tails_reader)
+    # Note that in the above, revocation registry data is passed to issue the credential
+
+    # Issuer Posts Revocation Registry Delta to Ledger
+    print("University -> Send revocation registry delta to Ledger")
+    await send_revoc_reg_delta(university['pool'], university['wallet'], university['did'],
+                               university['rev_reg_id'], rev_reg_delta_json)
+
+    # Issuer sends credential to Prover
+    print("University -> Send Student Card Credential to Alice")
+    alice['sc_cred'] = university['sc_cred']
+
+    # Prover Gets RevocationRegistryDefinition from Ledger
+    print("Alice -> Get revocation registry definition from Ledger")
+    credential = json.loads(alice['sc_cred'])
+
+    (rev_reg_id, revoc_reg_def_json) = \
+        await get_revoc_reg_def(alice['pool'], alice['did'], credential['rev_reg_id'])
+
+    # Prover stores credential and revocation data
+    print("Alice -> Store the credential and revocation data")
+    _, alice['sc_cred_def'] = await get_cred_def(alice['pool'], alice['did'], alice['sc_cred_def_id'])
+
+    await anoncreds.prover_store_credential(alice['wallet'], None,  # none = cred_id, can be any string I think
+                                            alice['sc_cred_request_metadata'],
+                                            alice['sc_cred'], alice['sc_cred_def'], revoc_reg_def_json)
+
     # ---------------------------------- USING THE CREDENTIALS ---------------------------------- #
 
     print("\n=====================================================================")
     print("== Drive a train with Carrier B - City Card proving ==")
 
-    print("Carrier B -> Create Ticket Check Proof Request")
+    print("Alice -> Proclaims having a half-price ticket to they ticket collector")
+
+    print("Carrier B -> Create Ticket Check Proof Request which includes Student Card verification")
     nonce = await anoncreds.generate_nonce()
     carrier_b['ticket_check_proof_request'] = json.dumps({
         'nonce': nonce,
