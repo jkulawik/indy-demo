@@ -419,6 +419,10 @@ async def run():
                 'name': 'half_price',
                 'restrictions': [{'cred_def_id': carrier_a['cc_cred_def_id']}, {'cred_def_id': carrier_b['cc_cred_def_id']}]
             },
+            'attr5_referent': {
+                'name': 'album_number',
+                'restrictions': [{'cred_def_id': university['sc_cred_def_id']}]
+            },
         },
         'requested_predicates': {
             'predicate1_referent': {
@@ -443,12 +447,13 @@ async def run():
     cred_for_attr2 = await get_credential_for_referent(search_handle, 'attr2_referent')
     cred_for_attr3 = await get_credential_for_referent(search_handle, 'attr3_referent')
     cred_for_attr4 = await get_credential_for_referent(search_handle, 'attr4_referent')
+    cred_for_attr5 = await get_credential_for_referent(search_handle, 'attr5_referent')
     cred_for_predicate1 = await get_credential_for_referent(search_handle, 'predicate1_referent')
 
-    creds = [cred_for_attr1, cred_for_attr2, cred_for_attr3, cred_for_attr4, cred_for_predicate1]
-    for cred in creds:
-        print("[i] Credentials from search")
-        print(cred)
+    # creds = [cred_for_attr1, cred_for_attr2, cred_for_attr3, cred_for_attr4, cred_for_predicate1]
+    # for cred in creds:
+    #     print("[i] Credentials from search")
+    #     print(cred)
 
     await anoncreds.prover_close_credentials_search_for_proof_req(search_handle)
 
@@ -456,6 +461,7 @@ async def run():
                                              cred_for_attr2['referent']: cred_for_attr2,
                                              cred_for_attr3['referent']: cred_for_attr3,
                                              cred_for_attr4['referent']: cred_for_attr4,
+                                             cred_for_attr5['referent']: cred_for_attr5,
                                              cred_for_predicate1['referent']: cred_for_predicate1}
     # NOTE: the search returns the same cred (referent) each time, so this dict has one entry that's
     # being readded and is presumably automatically skipped
@@ -482,8 +488,10 @@ async def run():
         'requested_attributes': {
             'attr3_referent': {'cred_id': cred_for_attr3['referent'],
                                'revealed': True, 'timestamp': timestamps[cred_for_attr3['referent']]},
-            'attr4_referent': {'cred_id': cred_for_attr4['referent'], 'revealed': True,
-                               'timestamp': timestamps[cred_for_attr4['referent']]},
+            'attr4_referent': {'cred_id': cred_for_attr4['referent'],
+                               'revealed': True, 'timestamp': timestamps[cred_for_attr4['referent']]},
+            'attr5_referent': {'cred_id': cred_for_attr5['referent'],
+                               'revealed': True, 'timestamp': timestamps[cred_for_attr5['referent']]},
         },
         'requested_predicates': {
             'predicate1_referent': {'cred_id': cred_for_predicate1['referent'],
@@ -538,6 +546,7 @@ async def run():
 
     print("\n=====================================================================")
     print("== Alice tries to use a Carrier 2 exclusive service ==")
+    print("Alice -> Chooses half-price ticket in a ticket gate")
 
     carrier_b['ex_ticket_check_proof_request'] = json.dumps({
         'nonce': nonce,
@@ -552,11 +561,15 @@ async def run():
             },
             'attr3_referent': {
                 'name': 'city',
-                'restrictions': [{'cred_def_id': carrier_a['cc_cred_def_id']}, {'cred_def_id': carrier_b['cc_cred_def_id']}]
+                'restrictions': [{'cred_def_id': carrier_b['cc_cred_def_id']}]
             },
             'attr4_referent': {
                 'name': 'half_price',
-                'restrictions': [{'cred_def_id': carrier_a['cc_cred_def_id']}, {'cred_def_id': carrier_b['cc_cred_def_id']}]
+                'restrictions': [{'cred_def_id': carrier_b['cc_cred_def_id']}]
+            },
+            'attr5_referent': {
+                'name': 'album_number',
+                'restrictions': [{'cred_def_id': university['sc_cred_def_id']}]
             },
         },
         'requested_predicates': {
@@ -564,7 +577,7 @@ async def run():
                 'name': 'max_zone',
                 'p_type': '>=',
                 'p_value': 2,
-                'restrictions': [{'cred_def_id': carrier_a['cc_cred_def_id']}, {'cred_def_id': carrier_b['cc_cred_def_id']}]
+                'restrictions': [{'cred_def_id': carrier_b['cc_cred_def_id']}]
             }
         },
     })
@@ -577,11 +590,11 @@ async def run():
         await anoncreds.prover_search_credentials_for_proof_req(alice['wallet'],
                                                                 alice['ex_ticket_check_proof_request'], None)
 
-    # get_credential_for_referent = prover_fetch_credentials_for_proof_req
     ex_cred_for_attr1 = await get_credential_for_referent(search_handle, 'attr1_referent')
     ex_cred_for_attr2 = await get_credential_for_referent(search_handle, 'attr2_referent')
     ex_cred_for_attr3 = await get_credential_for_referent(search_handle, 'attr3_referent')
     ex_cred_for_attr4 = await get_credential_for_referent(search_handle, 'attr4_referent')
+    ex_cred_for_attr5 = await get_credential_for_referent(search_handle, 'attr5_referent')
     ex_cred_for_predicate1 = await get_credential_for_referent(search_handle, 'predicate1_referent')
 
     await anoncreds.prover_close_credentials_search_for_proof_req(search_handle)
@@ -590,11 +603,13 @@ async def run():
     print("Found credential for attribute 2?", 'referent' in ex_cred_for_attr2)
     print("Found credential for attribute 3?", 'referent' in ex_cred_for_attr3)
     print("Found credential for attribute 4?", 'referent' in ex_cred_for_attr4)
+    print("Found credential for attribute 5?", 'referent' in ex_cred_for_attr5)
     print("Found credential for predicate 1?", 'referent' in ex_cred_for_predicate1)
-    # 1,2 and 6 are found because they have no restrictions
-    print("Alice -> Can't find matching credentials. Attempt to use card from Carrier A anyway")
+    print("Note: 1 and 2 are found, because they are self-attested, and 5 is found because it's the student card")
+    print("Alice -> Can't find valid credentials for some attributes. Attempt to create a proof anyway")
 
-    alice['creds_for_ex_ticket_check_proof'] = {ex_cred_for_attr1['referent']: ex_cred_for_attr1}
+    alice['creds_for_ex_ticket_check_proof'] = {ex_cred_for_attr1['referent']: ex_cred_for_attr1,
+                                                ex_cred_for_attr5['referent']: ex_cred_for_attr5}
 
     request_time = get_current_time()
     alice['schemas'], alice['cred_defs'], alice['revoc_states'], timestamps = \
@@ -605,7 +620,7 @@ async def run():
                                               _tails_reader=tails_reader)
     alice['last_revoc_update'] = request_time
 
-    print("Alice -> Create Ticket Check Proof")
+    print("Alice -> Create Exclusive Ticket Check Proof")
     alice['ex_ticket_check_requested_creds'] = json.dumps({
         'self_attested_attributes': {
             'attr1_referent': 'Alice',
@@ -616,6 +631,8 @@ async def run():
                                'revealed': True, 'timestamp': timestamps[ex_cred_for_attr1['referent']]},
             'attr4_referent': {'cred_id': ex_cred_for_attr1['referent'], 'revealed': True,
                                'timestamp': timestamps[ex_cred_for_attr1['referent']]},
+            'attr5_referent': {'cred_id': ex_cred_for_attr5['referent'], 'revealed': True,
+                               'timestamp': timestamps[ex_cred_for_attr5['referent']]},
         },
         'requested_predicates': {
             'predicate1_referent': {'cred_id': ex_cred_for_attr1['referent'],
@@ -645,6 +662,8 @@ async def run():
                                                                 carrier_b['cred_defs_for_job_application'],
                                                                 carrier_b['revoc_reg_defs_for_job_application'],
                                                                 carrier_b['revoc_regs_for_job_application'])
+        print("Ticket validity:", ticket_validity)
+        assert ticket_validity is False
     except IndyError as ex:
         print("Exception occured:", errorcode_to_exception(ex.error_code))
 
@@ -688,8 +707,10 @@ async def run():
         'requested_attributes': {
             'attr3_referent': {'cred_id': cred_for_attr3['referent'],
                                'revealed': True, 'timestamp': timestamps[cred_for_attr3['referent']]},
-            'attr4_referent': {'cred_id': cred_for_attr4['referent'], 'revealed': True,
-                               'timestamp': timestamps[cred_for_attr4['referent']]},
+            'attr4_referent': {'cred_id': cred_for_attr4['referent'],
+                               'revealed': True, 'timestamp': timestamps[cred_for_attr4['referent']]},
+            'attr5_referent': {'cred_id': cred_for_attr5['referent'],
+                               'revealed': True, 'timestamp': timestamps[cred_for_attr5['referent']]},
         },
         'requested_predicates': {
             'predicate1_referent': {'cred_id': cred_for_predicate1['referent'],
