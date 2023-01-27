@@ -504,6 +504,12 @@ async def run():
                                             alice['ticket_check_requested_creds'], alice['master_secret_id'],
                                             alice['schemas'], alice['cred_defs'], alice['revoc_states'])
 
+    # Test altering raw values
+    # print("[!] Alice ticket proof")
+    # print(alice['ticket_check_proof'])
+    # alice['ticket_check_proof'] = alice['ticket_check_proof'].replace('Warsaw', 'Krakow')
+    # assert 'Krakow' in alice['ticket_check_proof']
+
     print("Alice -> Send Ticket Check Proof to Carrier B")
     carrier_b['ticket_check_proof'] = alice['ticket_check_proof']
     ticket_check_proof_object = json.loads(carrier_b['ticket_check_proof'])
