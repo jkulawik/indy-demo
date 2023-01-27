@@ -611,6 +611,9 @@ async def run():
     alice['creds_for_ex_ticket_check_proof'] = {ex_cred_for_attr1['referent']: ex_cred_for_attr1,
                                                 ex_cred_for_attr5['referent']: ex_cred_for_attr5}
 
+    print("[!] Creds found for exclusive ticket check")
+    print(alice['creds_for_ex_ticket_check_proof'])
+
     request_time = get_current_time()
     alice['schemas'], alice['cred_defs'], alice['revoc_states'], timestamps = \
         await prover_get_entities_from_ledger(alice['pool'], alice['did'],
@@ -629,10 +632,10 @@ async def run():
         'requested_attributes': {
             'attr3_referent': {'cred_id': ex_cred_for_attr1['referent'],
                                'revealed': True, 'timestamp': timestamps[ex_cred_for_attr1['referent']]},
-            'attr4_referent': {'cred_id': ex_cred_for_attr1['referent'], 'revealed': True,
-                               'timestamp': timestamps[ex_cred_for_attr1['referent']]},
-            'attr5_referent': {'cred_id': ex_cred_for_attr5['referent'], 'revealed': True,
-                               'timestamp': timestamps[ex_cred_for_attr5['referent']]},
+            'attr4_referent': {'cred_id': ex_cred_for_attr1['referent'],
+                               'revealed': True, 'timestamp': timestamps[ex_cred_for_attr1['referent']]},
+            'attr5_referent': {'cred_id': ex_cred_for_attr5['referent'],
+                               'revealed': True, 'timestamp': timestamps[ex_cred_for_attr5['referent']]},
         },
         'requested_predicates': {
             'predicate1_referent': {'cred_id': ex_cred_for_attr1['referent'],
