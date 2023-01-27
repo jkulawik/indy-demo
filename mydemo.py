@@ -554,7 +554,11 @@ async def run():
         'version': '0.1',
         'requested_attributes': {
             'attr1_referent': {
-                'name': 'first_name'
+                'name': 'first_name',
+                'restrictions': [{'cred_def_id': carrier_a['cc_cred_def_id']}]
+                # NOTE: this restriction is present only to make the demo function well;
+                # otherwise the credential search can return the student card twice which breaks the demo
+                # (which happens only because we're trying to cheat in the first place)
             },
             'attr2_referent': {
                 'name': 'last_name'
